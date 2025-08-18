@@ -1,7 +1,14 @@
 from django.db import models
 from django.contrib.auth.models import User
 from django.core.validators import MinValueValidator, MaxValueValidator
+from django.conf import settings
 import uuid
+import os
+
+
+def get_default_shapefile_path():
+    """取得預設shapefile路徑"""
+    return 'default_shapefiles/110全臺36條活動斷層數值檔(111年編修)_1110727.shp'
 
 
 class AnalysisProject(models.Model):
@@ -51,7 +58,8 @@ class AnalysisProject(models.Model):
         upload_to='uploads/shapefiles/', 
         blank=True, 
         null=True, 
-        verbose_name="斷層資料檔案"
+        verbose_name="斷層資料檔案",
+        help_text="若不上傳將使用系統預設的活動斷層資料"
     )
     
     # 分析狀態
@@ -71,8 +79,29 @@ class AnalysisProject(models.Model):
     
     def __str__(self):
         return f"{self.name} ({self.get_analysis_method_display()})"
+    
+    def get_fault_shapefile_path(self):
+        """取得斷層shapefile檔案路徑"""
+        if self.fault_shapefile and self.fault_shapefile.name:
+            return self.fault_shapefile.path
+        else:
+            # 使用預設的shapefile
+            default_path = os.path.join(settings.MEDIA_ROOT, get_default_shapefile_path())
+            if os.path.exists(default_path):
+                return default_path
+            else:
+                raise FileNotFoundError(f"預設斷層檔案不存在: {default_path}")
+    
+    def get_fault_shapefile_url(self):
+        """取得斷層shapefile檔案URL"""
+        if self.fault_shapefile and self.fault_shapefile.name:
+            return self.fault_shapefile.url
+        else:
+            # 使用預設的shapefile URL
+            return f"{settings.MEDIA_URL}{get_default_shapefile_path()}"
 
 
+# 其他模型保持不變...
 class BoreholeData(models.Model):
     """鑽孔資料模型"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)

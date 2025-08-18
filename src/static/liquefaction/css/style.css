@@ -1,0 +1,217 @@
+/* 自定義樣式 */
+body {
+    background-color: #f8f9fa;
+}
+
+/* 導航欄 */
+.navbar-brand {
+    font-weight: bold;
+}
+
+/* 卡片樣式 */
+.card {
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    border: 1px solid rgba(0, 0, 0, 0.125);
+}
+
+.card:hover {
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    transition: all 0.15s ease-in-out;
+}
+
+/* 首頁大標題區塊 */
+.jumbotron {
+    background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);
+    border: none;
+}
+
+/* 狀態徽章 */
+.badge {
+    font-size: 0.75em;
+}
+
+/* 按鈕群組 */
+.btn-group .btn {
+    margin: 0;
+}
+
+/* 表格樣式 */
+.table th {
+    border-top: none;
+    font-weight: 600;
+    background-color: #f8f9fa;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(0, 123, 255, 0.075);
+}
+
+/* 分頁樣式 */
+.pagination .page-link {
+    color: #007bff;
+    border-color: #dee2e6;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #007bff;
+    border-color: #007bff;
+}
+
+/* 統計卡片 */
+.card.bg-info,
+.card.bg-success,
+.card.bg-warning,
+.card.bg-danger {
+    border: none;
+}
+
+/* 檔案上傳區域 */
+.upload-area {
+    border: 2px dashed #dee2e6;
+    border-radius: 0.375rem;
+    padding: 3rem;
+    text-align: center;
+    background-color: #f8f9fa;
+    transition: all 0.15s ease-in-out;
+}
+
+.upload-area:hover {
+    border-color: #007bff;
+    background-color: rgba(0, 123, 255, 0.05);
+}
+
+.upload-area.dragover {
+    border-color: #28a745;
+    background-color: rgba(40, 167, 69, 0.05);
+}
+
+/* 進度條 */
+.progress {
+    height: 0.5rem;
+}
+
+/* 結果表格 */
+.results-table {
+    font-size: 0.875rem;
+}
+
+.results-table th {
+    font-size: 0.75rem;
+    padding: 0.5rem;
+}
+
+.results-table td {
+    padding: 0.5rem;
+}
+
+/* 響應式調整 */
+@media (max-width: 768px) {
+    .btn-group {
+        display: block;
+    }
+    
+    .btn-group .btn {
+        display: block;
+        width: 100%;
+        margin-bottom: 0.25rem;
+    }
+    
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+}
+
+/* 工具提示 */
+.tooltip {
+    font-size: 0.875rem;
+}
+
+/* 載入動畫 */
+.loading {
+    display: inline-block;
+    width: 1rem;
+    height: 1rem;
+    border: 0.125rem solid rgba(0, 0, 0, 0.1);
+    border-radius: 50%;
+    border-top-color: #007bff;
+    animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* 成功/錯誤狀態 */
+.status-success {
+    color: #28a745;
+}
+
+.status-warning {
+    color: #ffc107;
+}
+
+.status-error {
+    color: #dc3545;
+}
+
+.status-pending {
+    color: #6c757d;
+}
+
+/* 特殊按鈕樣式 */
+.btn-analyze {
+    background: linear-gradient(45deg, #28a745, #20c997);
+    border: none;
+    color: white;
+}
+
+.btn-analyze:hover {
+    background: linear-gradient(45deg, #218838, #1ea080);
+    color: white;
+}
+
+/* 數據表格特殊樣式 */
+.data-table .table th {
+    position: sticky;
+    top: 0;
+    background-color: white;
+    z-index: 10;
+}
+
+/* 側邊欄 */
+.sidebar {
+    min-height: calc(100vh - 56px);
+    background-color: white;
+    border-right: 1px solid #dee2e6;
+}
+
+/* 圖表容器 */
+.chart-container {
+    position: relative;
+    height: 400px;
+    margin-bottom: 2rem;
+}
+
+/* 自定義滾動條 */
+.custom-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #007bff #f1f1f1;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #007bff;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #0056b3;
+}

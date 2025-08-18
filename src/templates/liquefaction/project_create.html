@@ -1,0 +1,237 @@
+{% extends 'base.html' %}
+
+{% block title %}創建新專案 - 土壤液化分析系統{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-plus"></i> 創建新專案</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                <li class="breadcrumb-item active">創建專案</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> 專案基本資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <!-- 基本資訊 -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">專案名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" required>
+                            <div class="form-text">為您的液化分析專案起一個有意義的名稱</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="analysis_method" class="form-label">分析方法 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="analysis_method" name="analysis_method" required>
+                                {% for value, label in analysis_methods %}
+                                <option value="{{ value }}" {% if value == 'HBF' %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">專案描述</label>
+                        <textarea class="form-control" id="description" name="description" rows="3" placeholder="請描述本專案的目的、範圍或其他相關資訊..."></textarea>
+                    </div>
+
+                    <!-- 檔案上傳 -->
+                    <hr class="my-4">
+                    <h6><i class="fas fa-upload"></i> 資料檔案</h6>
+                    
+                    <div class="mb-3">
+                        <label for="source_file" class="form-label">鑽孔資料檔案 <span class="text-danger">*</span></label>
+                        <input type="file" class="form-control" id="source_file" name="source_file" accept=".csv" required>
+                        <div class="form-text">
+                            請上傳包含鑽孔座標、土層資料、SPT-N值等資訊的 CSV 檔案
+                            <a href="#" data-bs-toggle="modal" data-bs-target="#csvFormatModal">查看格式要求</a>
+                        </div>
+                    </div>
+
+                    <!-- 分析參數 -->
+                    <hr class="my-4">
+                    <h6><i class="fas fa-cog"></i> 分析參數</h6>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="em_value" class="form-label">錘擊能量效率 Em (%)</label>
+                            <input type="number" class="form-control" id="em_value" name="em_value" 
+                                   value="72" min="0" max="100" step="0.1">
+                            <div class="form-text">標準值為 72%</div>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="unit_weight_unit" class="form-label">單位重單位</label>
+                            <select class="form-select" id="unit_weight_unit" name="unit_weight_unit">
+                                {% for value, label in unit_weight_units %}
+                                <option value="{{ value }}" {% if value == 't/m3' %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 斷層資料 -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="use_fault_data" name="use_fault_data" checked>
+                            <label class="form-check-label" for="use_fault_data">
+                                使用斷層距離參數
+                            </label>
+                        </div>
+                        <div class="form-text">如果勾選，系統將自動計算各鑽孔位置與鄰近斷層的距離</div>
+                    </div>
+
+                    <div class="mb-3" id="fault_file_section">
+                        <label for="fault_shapefile" class="form-label">斷層資料檔案<label>
+                        <input type="file" class="form-control" id="fault_shapefile" name="fault_shapefile" accept=".shp,.zip" >
+                        <div class="form-text">
+                            可上傳自定義的斷層 Shapefile 檔案。
+                        </div>
+                    </div>
+
+                    <!-- 提交按鈕 -->
+                    <hr class="my-4">
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'liquefaction:index' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> 返回首頁
+                        </a>
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="fas fa-plus"></i> 創建專案
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- 側邊欄說明 -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0"><i class="fas fa-lightbulb"></i> 使用說明</h6>
+            </div>
+            <div class="card-body">
+                <h6>分析方法說明：</h6>
+                <ul class="list-unstyled">
+                    <li><strong>HBF (2012)</strong>：推薦使用，適用於台灣地區</li>
+                    <li><strong>NCEER</strong>：國際標準方法</li>
+                    <li><strong>AIJ</strong>：日本建築學會方法</li>
+                    <li><strong>JRA</strong>：日本道路協會方法</li>
+                </ul>
+
+                <h6 class="mt-4">CSV 檔案要求：</h6>
+                <ul class="list-unstyled">
+                    <li>• 必須包含鑽孔座標（TWD97）</li>
+                    <li>• 土層深度資訊</li>
+                    <li>• SPT-N值</li>
+                    <li>• 土壤分類（USCS）</li>
+                    <li>• 單位重、含水量等物理性質</li>
+                </ul>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>提示：</strong>創建專案後，您可以預覽上傳的資料，確認無誤後再進行液化分析。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- CSV 格式說明 Modal -->
+<div class="modal fade" id="csvFormatModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-csv"></i> CSV 檔案格式要求</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <h6>必需欄位：</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-bordered">
+                        <thead>
+                            <tr>
+                                <th>欄位名稱</th>
+                                <th>說明</th>
+                                <th>範例</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>鑽孔編號</td>
+                                <td>唯一識別碼</td>
+                                <td>BH-01, BH-02</td>
+                            </tr>
+                            <tr>
+                                <td>TWD97_X</td>
+                                <td>TWD97 X座標</td>
+                                <td>121.5123</td>
+                            </tr>
+                            <tr>
+                                <td>TWD97_Y</td>
+                                <td>TWD97 Y座標</td>
+                                <td>25.0456</td>
+                            </tr>
+                            <tr>
+                                <td>上限深度</td>
+                                <td>土層上限深度(m)</td>
+                                <td>0.0, 2.5</td>
+                            </tr>
+                            <tr>
+                                <td>下限深度</td>
+                                <td>土層下限深度(m)</td>
+                                <td>2.5, 5.0</td>
+                            </tr>
+                            <tr>
+                                <td>SPT_N</td>
+                                <td>標準貫入試驗N值</td>
+                                <td>8, 15, 25</td>
+                            </tr>
+                            <tr>
+                                <td>USCS</td>
+                                <td>統一土壤分類</td>
+                                <td>SM, CL, SP</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                
+                <h6 class="mt-3">選填欄位：</h6>
+                <p>單位重、含水量、粒徑分析資料、塑性指數等</p>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    請確保 CSV 檔案使用 UTF-8 編碼，且第一行為欄位標題。
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('use_fault_data').addEventListener('change', function() {
+    const faultFileSection = document.getElementById('fault_file_section');
+    if (this.checked) {
+        faultFileSection.style.display = 'block';
+    } else {
+        faultFileSection.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

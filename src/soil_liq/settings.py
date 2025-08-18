@@ -11,7 +11,7 @@ https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 
 from pathlib import Path
-
+import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -130,3 +130,7 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # 檔案上傳設定
 FILE_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
 DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
+
+# 預設Shapefile設定
+DEFAULT_SHAPEFILE_NAME = '110全臺36條活動斷層數值檔(111年編修)_1110727.shp'
+DEFAULT_SHAPEFILE_PATH = os.path.join(MEDIA_ROOT, 'default_shapefiles', DEFAULT_SHAPEFILE_NAME)

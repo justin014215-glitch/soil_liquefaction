@@ -1,0 +1,189 @@
+{% extends 'base.html' %}
+
+{% block title %}首頁 - 土壤液化分析系統{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <!-- 歡迎區塊 -->
+        <div class="jumbotron bg-primary text-white rounded p-5 mb-4">
+            <div class="container">
+                <h1 class="display-4"><i class="fas fa-mountain"></i> {{ title }}</h1>
+                <p class="lead">{{ description }}</p>
+                {% if not user.is_authenticated %}
+                <hr class="my-4">
+                <p>請先登入以開始使用系統功能</p>
+                <a class="btn btn-light btn-lg" href="/admin/login/" role="button">
+                    <i class="fas fa-sign-in-alt"></i> 立即登入
+                </a>
+                {% else %}
+                <hr class="my-4">
+                <a class="btn btn-light btn-lg" href="{% url 'liquefaction:project_create' %}" role="button">
+                    <i class="fas fa-plus"></i> 創建新專案
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if user.is_authenticated %}
+<!-- 使用者統計 -->
+<div class="row mb-4">
+    <div class="col-md-4">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">總專案數</h5>
+                        <h2>{{ stats.total_projects }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-folder fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">已完成</h5>
+                        <h2>{{ stats.completed_projects }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-check-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">分析中</h5>
+                        <h2>{{ stats.processing_projects }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-sync-alt fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 最近的專案 -->
+{% if recent_projects %}
+<div class="row">
+    <div class="col-12">
+        <h3><i class="fas fa-clock"></i> 最近的專案</h3>
+        <div class="card">
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>專案名稱</th>
+                                <th>分析方法</th>
+                                <th>狀態</th>
+                                <th>更新時間</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for project in recent_projects %}
+                            <tr>
+                                <td>
+                                    <strong>{{ project.name }}</strong>
+                                    {% if project.description %}
+                                    <br><small class="text-muted">{{ project.description|truncatechars:50 }}</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <span class="badge bg-secondary">{{ project.get_analysis_method_display }}</span>
+                                </td>
+                                <td>
+                                    {% if project.status == 'completed' %}
+                                    <span class="badge bg-success">{{ project.get_status_display }}</span>
+                                    {% elif project.status == 'processing' %}
+                                    <span class="badge bg-warning">{{ project.get_status_display }}</span>
+                                    {% elif project.status == 'error' %}
+                                    <span class="badge bg-danger">{{ project.get_status_display }}</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ project.get_status_display }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ project.updated_at|date:"Y/m/d H:i" }}</td>
+                                <td>
+                                    <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye"></i> 查看
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-center">
+                    <a href="{% url 'liquefaction:project_list' %}" class="btn btn-primary">
+                        <i class="fas fa-list"></i> 查看所有專案
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endif %}
+
+<!-- 功能介紹 -->
+<div class="row mt-5">
+    <div class="col-12">
+        <h3><i class="fas fa-info-circle"></i> 系統功能</h3>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-upload fa-3x text-primary mb-3"></i>
+                <h5 class="card-title">檔案上傳</h5>
+                <p class="card-text">支援 CSV 格式的鑽孔資料上傳，自動解析土層資訊</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-calculator fa-3x text-success mb-3"></i>
+                <h5 class="card-title">多種分析方法</h5>
+                <p class="card-text">支援 HBF (2012)、NCEER、AIJ、JRA 等標準分析方法</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-map-marked-alt fa-3x text-warning mb-3"></i>
+                <h5 class="card-title">地震參數查詢</h5>
+                <p class="card-text">自動查詢台灣地區地震參數，支援斷層距離計算</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3 mb-4">
+        <div class="card h-100">
+            <div class="card-body text-center">
+                <i class="fas fa-chart-line fa-3x text-info mb-3"></i>
+                <h5 class="card-title">結果分析</h5>
+                <p class="card-text">詳細的液化分析結果，包含安全係數與液化潛能指數</p>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
