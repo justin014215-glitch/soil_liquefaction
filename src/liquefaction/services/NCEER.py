@@ -1501,8 +1501,8 @@ class NCEER:
             SM_S = row.get('SMS') or row.get('使用SMS')  # 台北盆地的SMS就是SM_S
             
             # 根據情境計算 A_value
-            if scenario == "Design":
-                A_value = 0.4 * SD_S
+            if scenario == "Design": 
+                A_value = 0.4 * SD_S / 3.5
             elif scenario == "MidEq": 
                 A_value = 0.4 * SD_S / 4.2
             elif scenario == "MaxEq":

@@ -1494,7 +1494,7 @@ class AIJ:
             
             # 根據情境計算 A_value
             if scenario == "Design":
-                A_value = 0.4 * SD_S
+                A_value = 0.4 * SD_S / 3.5
             elif scenario == "MidEq": 
                 A_value = 0.4 * SD_S / 4.2
             elif scenario == "MaxEq":
