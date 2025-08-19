@@ -1,0 +1,192 @@
+{% extends 'base.html' %}
+
+{% block title %}編輯專案 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-edit"></i> 編輯專案</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">編輯</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> 專案資訊</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    {% csrf_token %}
+                    
+                    <!-- 基本資訊 -->
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="name" class="form-label">專案名稱 <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" id="name" name="name" value="{{ project.name }}" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="analysis_method" class="form-label">分析方法 <span class="text-danger">*</span></label>
+                            <select class="form-select" id="analysis_method" name="analysis_method" required>
+                                {% for value, label in analysis_methods %}
+                                <option value="{{ value }}" {% if value == project.analysis_method %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label for="description" class="form-label">專案描述</label>
+                        <textarea class="form-control" id="description" name="description" rows="3">{{ project.description }}</textarea>
+                    </div>
+
+                    <!-- 分析參數 -->
+                    <hr class="my-4">
+                    <h6><i class="fas fa-cog"></i> 分析參數</h6>
+                    
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="em_value" class="form-label">錘擊能量效率 Em (%)</label>
+                            <input type="number" class="form-control" id="em_value" name="em_value" 
+                                   value="{{ project.em_value }}" min="0" max="100" step="0.1">
+                        </div>
+                        <div class="col-md-6">
+                            <label for="unit_weight_unit" class="form-label">單位重單位</label>
+                            <select class="form-select" id="unit_weight_unit" name="unit_weight_unit">
+                                {% for value, label in unit_weight_units %}
+                                <option value="{{ value }}" {% if value == project.unit_weight_unit %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 斷層資料 -->
+                    <div class="mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="use_fault_data" name="use_fault_data" {% if project.use_fault_data %}checked{% endif %}>
+                            <label class="form-check-label" for="use_fault_data">
+                                使用斷層距離參數
+                            </label>
+                        </div>
+                    </div>
+
+                    <!-- 檔案上傳 -->
+                    <hr class="my-4">
+                    <h6><i class="fas fa-upload"></i> 資料檔案</h6>
+                    
+                    {% if project.source_file %}
+                    <div class="alert alert-info">
+                        <i class="fas fa-file-csv"></i>
+                        <strong>當前檔案：</strong> {{ project.source_file.name }}
+                        <br><small>上傳新檔案將替換現有檔案</small>
+                    </div>
+                    {% endif %}
+                    
+                    <div class="mb-3">
+                        <label for="source_file" class="form-label">鑽孔資料檔案 (CSV)</label>
+                        <input type="file" class="form-control" id="source_file" name="source_file" accept=".csv">
+                        <div class="form-text">如不選擇檔案，將保留原有檔案</div>
+                    </div>
+
+                    {% if project.use_fault_data %}
+                    <div class="mb-3">
+                        <label for="fault_shapefile" class="form-label">斷層資料檔案</label>
+                        {% if project.fault_shapefile %}
+                        <div class="alert alert-info">
+                            <i class="fas fa-file"></i>
+                            <strong>當前檔案：</strong> {{ project.fault_shapefile.name }}
+                        </div>
+                        {% endif %}
+                        <input type="file" class="form-control" id="fault_shapefile" name="fault_shapefile" accept=".shp,.zip">
+                        <div class="form-text">如不選擇檔案，將使用系統預設斷層資料</div>
+                    </div>
+                    {% endif %}
+
+                    <!-- 提交按鈕 -->
+                    <hr class="my-4">
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> 取消
+                        </a>
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-save"></i> 儲存變更
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 側邊欄 -->
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0"><i class="fas fa-exclamation-triangle"></i> 注意事項</h6>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <ul class="mb-0">
+                        <li>修改分析方法會影響計算結果</li>
+                        <li>上傳新檔案會覆蓋現有資料</li>
+                        <li>已完成的分析結果可能需要重新執行</li>
+                    </ul>
+                </div>
+                
+                <h6 class="mt-3">專案狀態</h6>
+                <p>
+                    {% if project.status == 'completed' %}
+                    <span class="badge bg-success">已完成分析</span>
+                    {% elif project.status == 'processing' %}
+                    <span class="badge bg-warning">分析中</span>
+                    {% elif project.status == 'error' %}
+                    <span class="badge bg-danger">分析錯誤</span>
+                    {% else %}
+                    <span class="badge bg-secondary">等待分析</span>
+                    {% endif %}
+                </p>
+                
+                {% if project.status == 'completed' %}
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    如果修改了重要參數，建議重新執行分析以確保結果準確性。
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        
+        <!-- 刪除專案 -->
+        <div class="card mt-3">
+            <div class="card-header">
+                <h6 class="card-title mb-0 text-danger"><i class="fas fa-trash"></i> 危險操作</h6>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">刪除專案將無法復原</p>
+                <a href="{% url 'liquefaction:project_delete' project.pk %}" class="btn btn-outline-danger btn-sm">
+                    <i class="fas fa-trash"></i> 刪除專案
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+document.getElementById('use_fault_data').addEventListener('change', function() {
+    const faultFileSection = document.querySelector('[for="fault_shapefile"]').closest('.mb-3');
+    if (this.checked) {
+        faultFileSection.style.display = 'block';
+    } else {
+        faultFileSection.style.display = 'none';
+    }
+});
+</script>
+{% endblock %}

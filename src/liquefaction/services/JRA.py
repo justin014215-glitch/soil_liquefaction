@@ -42,6 +42,18 @@ plt.rcParams['font.sans-serif'] = ['Arial Unicode MS']  # 解決中文顯示問�
 # 常數設定
 g = 9.81  # 重力加速度 (m/s²)
 
+def setup_django_paths():
+    """設定 Django 路徑 - 簡化版本"""
+    try:
+        from django.conf import settings
+        # 在 Django 環境中，不需要特別設定路徑
+        pass
+    except ImportError:
+        # 非 Django 環境的處理
+        pass
+# 在檔案開頭呼叫
+setup_django_paths()
+
 #讀取檔案
 def get_input_file(input_file_path=None, show_gui=True):
     if input_file_path is None and show_gui:

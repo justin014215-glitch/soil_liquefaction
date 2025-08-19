@@ -23,9 +23,9 @@ class CSVParser:
         'top_depth': ['上限深度', '上限深度(m)', '上限深度(公尺)', '頂深度', 'top_depth', 'depth_from'],
         'bottom_depth': ['下限深度', '下限深度(m)', '下限深度(公尺)', '底深度', 'bottom_depth', 'depth_to'],
         'sample_id': ['取樣編號', '樣品編號', 'sample_id', 'sample_no'],
-        'uscs': ['USCS', '土壤分類', 'soil_type', 'classification'],
-        'spt_n': ['SPT_N', 'SPT-N', 'N值', 'spt_n', 'n_value'],
-        'unit_weight': ['單位重', '統體單位重', 'unit_weight', 'gamma'],
+        'uscs': ['USCS', '土壤分類', 'soil_type', 'classification', '統一土壤分類'],
+        'spt_n': ['SPT_N', 'SPT-N', 'N值', 'spt_n', 'N_value'],
+        'unit_weight': ['單位重', '統體單位重(t/m3)', 'unit_weight', 'gamma'],
         'water_content': ['含水量', '含水率', 'water_content', 'moisture_content'],
         'gravel_percent': ['礫石含量', '礫石%', 'gravel_percent', 'gravel'],
         'sand_percent': ['砂土含量', '砂%', 'sand_percent', 'sand'],
@@ -143,12 +143,23 @@ class CSVParser:
                 borehole_id = str(row[self.column_mapping['borehole_id']]).strip()
                 
                 if borehole_id not in self.parsed_data['boreholes']:
-                    self.parsed_data['boreholes'][borehole_id] = self._parse_borehole_data(row)
+                    try:
+                        self.parsed_data['boreholes'][borehole_id] = self._parse_borehole_data(row)
+                    except ValueError as e:
+                        if "座標資料" in str(e):
+                            # 座標問題，記錄警告並跳過此鑽孔
+                            warning_msg = f"跳過鑽孔 {borehole_id}: {str(e)}"
+                            self.warnings.append(warning_msg)
+                            logger.warning(warning_msg)
+                            continue
+                        else:
+                            raise
                 
-                # 解析土層資訊
-                soil_layer = self._parse_soil_layer_data(row, borehole_id)
-                if soil_layer:
-                    self.parsed_data['soil_layers'].append(soil_layer)
+                # 只有鑽孔資料成功解析才處理土層資訊
+                if borehole_id in self.parsed_data['boreholes']:
+                    soil_layer = self._parse_soil_layer_data(row, borehole_id)
+                    if soil_layer:
+                        self.parsed_data['soil_layers'].append(soil_layer)
                     
             except Exception as e:
                 error_msg = f"第 {index + 2} 行資料解析錯誤: {str(e)}"
@@ -161,9 +172,26 @@ class CSVParser:
         
         # 必要欄位
         borehole_data['borehole_id'] = str(row[self.column_mapping['borehole_id']]).strip()
-        borehole_data['twd97_x'] = float(row[self.column_mapping['twd97_x']])
-        borehole_data['twd97_y'] = float(row[self.column_mapping['twd97_y']])
         
+        # 檢查並解析座標
+        try:
+            x_val = row[self.column_mapping['twd97_x']]
+            y_val = row[self.column_mapping['twd97_y']]
+            
+            # 檢查座標是否為空值或無效
+            if pd.isna(x_val) or pd.isna(y_val) or str(x_val).strip() == '' or str(y_val).strip() == '':
+                raise ValueError(f"座標資料缺失: X={x_val}, Y={y_val}")
+            
+            borehole_data['twd97_x'] = float(x_val)
+            borehole_data['twd97_y'] = float(y_val)
+            
+            # 檢查座標是否在合理範圍內（台灣地區）
+            if not (160000 <= borehole_data['twd97_x'] <= 380000) or not (2420000 <= borehole_data['twd97_y'] <= 2800000):
+                self.warnings.append(f"鑽孔 {borehole_data['borehole_id']}: 座標可能超出台灣地區範圍")
+                
+        except (ValueError, TypeError) as e:
+            # 座標無效，拋出錯誤讓上層處理
+            raise ValueError(f"鑽孔 {borehole_data['borehole_id']} 座標資料無效: {str(e)}")        
         # 選填欄位
         optional_fields = ['surface_elevation', 'water_depth', 'city', 'district', 'village']
 
@@ -218,9 +246,33 @@ class CSVParser:
                 if field in self.column_mapping:
                     value = row[self.column_mapping[field]]
                     if pd.notna(value) and str(value).strip():
-                        if field in ['spt_n', 'unit_weight', 'water_content', 'gravel_percent',
-                                   'sand_percent', 'silt_percent', 'clay_percent', 'fines_content',
-                                   'plastic_index']:
+                        if field == 'spt_n':
+                            # 特殊處理 N 值，因為可能是字串格式
+                            try:
+                                # 嘗試直接轉換
+                                soil_layer[field] = float(value)
+                            except (ValueError, TypeError):
+                                # 如果是字串，嘗試解析
+                                value_str = str(value).strip()
+                                if value_str.startswith('>'):
+                                    try:
+                                        soil_layer[field] = float(value_str[1:])
+                                    except:
+                                        self.warnings.append(f"鑽孔 {borehole_id}: N值格式錯誤 ({value})")
+                                else:
+                                    # 嘗試從字串中提取數字
+                                    import re
+                                    numbers = re.findall(r'\d+\.?\d*', value_str)
+                                    if numbers:
+                                        try:
+                                            soil_layer[field] = float(numbers[0])
+                                        except:
+                                            self.warnings.append(f"鑽孔 {borehole_id}: 無法解析N值 ({value})")
+                                    else:
+                                        self.warnings.append(f"鑽孔 {borehole_id}: N值格式錯誤 ({value})")
+                        elif field in ['unit_weight', 'water_content', 'gravel_percent',
+                                    'sand_percent', 'silt_percent', 'clay_percent', 'fines_content',
+                                    'plastic_index']:
                             try:
                                 soil_layer[field] = float(value)
                             except (ValueError, TypeError):

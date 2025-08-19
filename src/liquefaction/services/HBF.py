@@ -35,28 +35,20 @@ from datetime import datetime
 '''
 
 def setup_django_paths():
-    current_file = Path(__file__).resolve()
-    # 如果在 Django 環境中
+    """設定 Django 路徑 - 簡化版本"""
     try:
         from django.conf import settings
-        project_root = settings.BASE_DIR.parent
-        shared_modules_path = project_root / "共用模組"
-        if str(shared_modules_path) not in sys.path:
-            sys.path.insert(0, str(shared_modules_path))
+        # 在 Django 環境中，不需要特別設定路徑
+        pass
     except ImportError:
-        # 非 Django 環境的備用方案
-        analysis_dir = current_file.parent.parent  # analysis/
-        project_root = analysis_dir.parent
-        shared_modules_path = project_root / "共用模組"
-        if str(shared_modules_path) not in sys.path:
-            sys.path.insert(0, str(shared_modules_path))
-
+        # 非 Django 環境的處理
+        pass
 # 在檔案開頭呼叫
 setup_django_paths()
 
 # 然後才 import
 try:
-    from report import generate_all_wells_excel_reports, generate_all_wells_charts
+    from .report import generate_all_wells_excel_reports, generate_all_wells_charts
     REPORT_AVAILABLE = True
 except ImportError as e:
     print(f"警告：無法載入報表模組: {e}")
@@ -152,17 +144,19 @@ def get_parameter_file_path(filename):
     """取得參數檔案的絕對路徑"""
     try:
         from django.conf import settings
-        return settings.BASE_DIR.parent / "參數" / filename
+        # 在 Django 中，假設參數檔案在 media 或其他配置目錄
+        # 暫時使用空的字典，避免檔案路徑問題
+        return None
     except ImportError:
         # 非 Django 環境
-        current_file = Path(__file__).resolve()
-        project_root = current_file.parent.parent.parent
-        return project_root / "參數" / filename
+        return None
+    
+# 暫時使用空的字典，避免檔案載入問題
+taiwan_seismic_data = {}
+general_zone_seismic_coefficients = {}
+taipei_basin_zones = {}
+fault_distance_parameters = {}
 
-taiwan_seismic_data = load_json_file(str(get_parameter_file_path("taiwan_seismic_data.json"))) or {}
-general_zone_seismic_coefficients = load_json_file(str(get_parameter_file_path("general_zone_seismic_coefficient.json"))) or {}
-taipei_basin_zones = load_json_file(str(get_parameter_file_path("taipei_basin_zone.json"))) or {}
-fault_distance_parameters = load_json_file(str(get_parameter_file_path("斷層參數.json"))) or {}
 # 台北盆地微分區係數
 taipei_basin_seismic_coefficients = {
     '臺北一區': {
@@ -280,7 +274,7 @@ def parse_numeric_value(value):
     
     value_str = str(value).strip()
     
-    if value_str == '':
+    if value_str == '' or value_str.lower() in ['nan', 'null', 'none', '-']:
         return None
     
     # 處理 > 符號
@@ -290,12 +284,22 @@ def parse_numeric_value(value):
         except (ValueError, TypeError):
             return None
     
-    # 直接轉換數字
+    # 處理其他可能的字串格式
     try:
-        return float(value_str)
+        # 移除可能的單位或其他字元
+        clean_str = value_str.replace(',', '').replace(' ', '')
+        return float(clean_str)
     except (ValueError, TypeError):
+        # 嘗試從字串中提取數字
+        import re
+        numbers = re.findall(r'-?\d+\.?\d*', clean_str)
+        if numbers:
+            try:
+                return float(numbers[0])
+            except:
+                pass
         return None
-
+    
 #標準化地址名稱，移除常見的地址變體
 def normalize_address_name(name: str) -> str:
     """標準化地址名稱，移除常見的地址變體"""
@@ -2352,6 +2356,41 @@ class HBF:
         else:
             print(f"使用N值欄位：{n_value_column}")
             
+            # === 新增：詳細檢查 N 值資料 ===
+            print("\n=== N值資料詳細檢查 ===")
+            print(f"N值欄位資料類型: {df[n_value_column].dtype}")
+            
+            # 顯示前 20 筆 N 值資料
+            print("前20筆N值資料:")
+            for i in range(min(20, len(df))):
+                val = df[n_value_column].iloc[i]
+                print(f"  [{i}] {repr(val)} (類型: {type(val).__name__})")
+            
+            # 統計空值情況
+            total_count = len(df)
+            null_count = df[n_value_column].isnull().sum()
+            empty_string_count = (df[n_value_column] == '').sum()
+            
+            print(f"\n統計資訊:")
+            print(f"  總筆數: {total_count}")
+            print(f"  空值(null): {null_count}")
+            print(f"  空字串: {empty_string_count}")
+            print(f"  非空非空字串: {total_count - null_count - empty_string_count}")
+            
+            # 顯示唯一值範例
+            unique_vals = df[n_value_column].unique()
+            print(f"  唯一值數量: {len(unique_vals)}")
+            print(f"  唯一值範例: {unique_vals[:10]}")
+            
+            # 測試過濾函數（前10個值）:
+            print(f"\n測試 parse_numeric_value 函數（前10個值）:")
+            for i in range(min(10, len(df))):
+                val = df[n_value_column].iloc[i]
+                parsed_val = parse_numeric_value(val)
+                print(f"  [{i}] {repr(val)} -> parsed: {parsed_val}")            
+            print("=== N值資料檢查結束 ===\n")
+            
+            
             # 過濾條件：N值不為空、不為NaN、不為空字串
             def is_valid_n_value(value):
                 if pd.isna(value) or value == '' or value is None:
@@ -2363,10 +2402,27 @@ class HBF:
                 if value_str == '' or value_str.upper() == 'NAN':
                     return False
                 
+                # 先嘗試直接轉換為數字
+                try:
+                    float_val = float(value_str)
+                    return float_val >= 0  # 只要是非負數就接受
+                except ValueError:
+                    pass
+                
+                # 處理 > 符號的情況
+                if value_str.startswith('>'):
+                    try:
+                        float_val = float(value_str[1:].strip())
+                        return float_val >= 0
+                    except ValueError:
+                        pass
+                
                 # 嘗試解析數值（包含>符號的情況）
                 parsed_value = parse_numeric_value(value)
-                return parsed_value is not None
+                return parsed_value is not None and parsed_value >= 0
             
+            filtered_count = len(df)
+            removed_count = 0
             # 應用過濾條件
             valid_mask = df[n_value_column].apply(is_valid_n_value)
             df = df[valid_mask].reset_index(drop=True)

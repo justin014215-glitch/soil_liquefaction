@@ -10,77 +10,75 @@ from typing import Dict, Any, List, Optional
 from django.db import transaction
 from ..models import AnalysisProject, BoreholeData, SoilLayer, AnalysisResult
 
+print("=== 開始載入 analysis_engine.py ===")
+
 logger = logging.getLogger(__name__)
 
-# 添加你的分析方法路徑
-try:
-    # 獲取專案根目錄
-    current_dir = Path(__file__).resolve().parent
-    # 從 src/liquefaction/services/analysis_engine.py 向上找到專案根目錄
-    project_root = current_dir.parent.parent.parent  # 這應該到達包含 analysis_methods 的目錄
-    analysis_methods_dir = project_root / "analysis_methods"
-    
-    print(f"當前目錄: {current_dir}")
-    print(f"專案根目錄: {project_root}")
-    print(f"分析方法目錄: {analysis_methods_dir}")
-    print(f"分析方法目錄是否存在: {analysis_methods_dir.exists()}")
-    
-    if analysis_methods_dir.exists():
-        if str(analysis_methods_dir) not in sys.path:
-            sys.path.insert(0, str(analysis_methods_dir))
-            print(f"已添加到 sys.path: {analysis_methods_dir}")
-        
-        # 列出目錄內容
-        files = list(analysis_methods_dir.glob("*.py"))
-        print(f"找到的 Python 檔案: {files}")
-        
-        # 嘗試導入 HBF
-        from HBF import HBF
-        HBF_AVAILABLE = True
-        print("✅ 成功載入 HBF 分析方法")
-        
-        # 嘗試導入其他方法
-        try:
-            from NCEER import NCEER
-            NCEER_AVAILABLE = True
-            print("✅ 成功載入 NCEER 分析方法")
-        except ImportError as e:
-            print(f"⚠️ 無法載入 NCEER: {e}")
-            NCEER_AVAILABLE = False
-            
-        try:
-            from AIJ import AIJ
-            AIJ_AVAILABLE = True
-            print("✅ 成功載入 AIJ 分析方法")
-        except ImportError as e:
-            print(f"⚠️ 無法載入 AIJ: {e}")
-            AIJ_AVAILABLE = False
-            
-        try:
-            from JRA import JRA
-            JRA_AVAILABLE = True
-            print("✅ 成功載入 JRA 分析方法")
-        except ImportError as e:
-            print(f"⚠️ 無法載入 JRA: {e}")
-            JRA_AVAILABLE = False
-            
-    else:
-        print(f"❌ 分析方法目錄不存在: {analysis_methods_dir}")
-        HBF_AVAILABLE = False
-        NCEER_AVAILABLE = False
-        AIJ_AVAILABLE = False
-        JRA_AVAILABLE = False
-        
-except ImportError as e:
-    print(f"❌ 載入分析方法時發生錯誤: {e}")
-    import traceback
-    print("詳細錯誤:")
-    print(traceback.format_exc())
-    HBF_AVAILABLE = False
-    NCEER_AVAILABLE = False
-    AIJ_AVAILABLE = False
-    JRA_AVAILABLE = False
+# 嘗試導入自定義的分析方法
+print("嘗試導入分析方法...")
+HBF_AVAILABLE = False
+NCEER_AVAILABLE = False
+AIJ_AVAILABLE = False
+JRA_AVAILABLE = False
 
+try:
+    print("正在導入 HBF...")
+    from .HBF import HBF
+    HBF_AVAILABLE = True
+    print("✅ 成功載入 HBF 分析方法")
+except ImportError as e:
+    print(f"❌ 無法載入 HBF 分析方法: {e}")
+    import traceback
+    traceback.print_exc()
+except Exception as e:
+    print(f"❌ 載入 HBF 時發生其他錯誤: {e}")
+    import traceback
+    traceback.print_exc()
+
+try:
+    print("正在導入 NCEER...")
+    from .NCEER import NCEER
+    NCEER_AVAILABLE = True
+    print("✅ 成功載入 NCEER 分析方法")
+except ImportError as e:
+    print(f"❌ 無法載入 NCEER 分析方法: {e}")
+    import traceback
+    traceback.print_exc()
+except Exception as e:
+    print(f"❌ 載入 NCEER 時發生其他錯誤: {e}")
+    import traceback
+    traceback.print_exc()
+
+
+try:
+    print("正在導入 AIJ...")
+    from .AIJ import AIJ
+    AIJ_AVAILABLE = True
+    print("✅ 成功載入 AIJ 分析方法")
+except ImportError as e:
+    print(f"❌ 無法載入 AIJ 分析方法: {e}")
+    import traceback
+    traceback.print_exc()
+except Exception as e:
+    print(f"❌ 載入 AIJ 時發生其他錯誤: {e}")
+    import traceback
+    traceback.print_exc()
+
+try:
+    print("正在導入 JRA...")
+    from .JRA import JRA
+    JRA_AVAILABLE = True
+    print("✅ 成功載入 JRA 分析方法")
+except ImportError as e:
+    print(f"❌ 無法載入 JRA 分析方法: {e}")
+    import traceback
+    traceback.print_exc()
+except Exception as e:
+    print(f"❌ 載入 JRA 時發生其他錯誤: {e}")
+    import traceback
+    traceback.print_exc()
+
+print(f"分析方法可用狀態: HBF={HBF_AVAILABLE}, NCEER={NCEER_AVAILABLE}, AIJ={AIJ_AVAILABLE}, JRA={JRA_AVAILABLE}")
 
 class LiquefactionAnalysisEngine:
     """液化分析計算引擎"""
@@ -93,9 +91,23 @@ class LiquefactionAnalysisEngine:
         self.results = []
         self.errors = []
         self.warnings = []
+        self._is_running = False  # 添加執行標記
     
     def run_analysis(self) -> Dict[str, Any]:
         """執行液化分析"""
+        # 檢查是否已在執行中
+        if self._is_running:
+            print("⚠️ 分析已在執行中，跳過重複執行")
+            return {
+                'success': False,
+                'error': '分析已在執行中',
+                'warnings': [],
+                'errors': []
+            }
+        
+        self._is_running = True
+        print(f"🔵 開始執行分析，項目狀態: {self.project.status}")
+        
         try:
             # 更新專案狀態
             self.project.status = 'processing'
@@ -103,17 +115,19 @@ class LiquefactionAnalysisEngine:
             
             # 根據選擇的分析方法決定使用哪個引擎
             if self.analysis_method == 'HBF' and HBF_AVAILABLE:
-                return self._run_custom_analysis('HBF', HBF)
+                result = self._run_custom_analysis('HBF', HBF)
             elif self.analysis_method == 'NCEER' and NCEER_AVAILABLE:
-                return self._run_custom_analysis('NCEER', NCEER)
+                result = self._run_custom_analysis('NCEER', NCEER)
             elif self.analysis_method == 'AIJ' and AIJ_AVAILABLE:
-                return self._run_custom_analysis('AIJ', AIJ)
+                result = self._run_custom_analysis('AIJ', AIJ)
             elif self.analysis_method == 'JRA' and JRA_AVAILABLE:
-                return self._run_custom_analysis('JRA', JRA)
+                result = self._run_custom_analysis('JRA', JRA)
             else:
                 # 使用原有的內建分析方法
                 print(f"使用內建分析方法: {self.analysis_method}")
-                return self._run_builtin_analysis()
+                result = self._run_builtin_analysis()
+            
+            return result
                 
         except Exception as e:
             self.project.status = 'error'
@@ -127,6 +141,9 @@ class LiquefactionAnalysisEngine:
                 'warnings': self.warnings,
                 'errors': self.errors
             }
+        finally:
+            self._is_running = False
+            print(f"🔵 分析執行結束")
 
     def _run_custom_analysis(self, method_name: str, analyzer_class) -> Dict[str, Any]:
         """使用自定義分析方法"""
@@ -721,7 +738,7 @@ class LiquefactionAnalysisEngine:
                     '上限深度(公尺)': layer.top_depth,
                     '下限深度(公尺)': layer.bottom_depth,
                     'water_depth(m)': borehole.water_depth,
-                    'N_value': layer.spt_n,
+                    'N_value': str(layer.spt_n) if layer.spt_n is not None else '',  # 轉為字串
                     '統一土壤分類': layer.uscs,
                     '統體單位重(t/m3)': layer.unit_weight,
                     '含水量(%)': layer.water_content,

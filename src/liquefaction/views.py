@@ -99,14 +99,42 @@ def project_create(request):
                 use_fault_data=use_fault_data,
             )
             
-            # 處理檔案上傳
+            # 處理檔案上傳並立即處理
+            csv_processed = False
+
             if 'source_file' in request.FILES:
                 project.source_file = request.FILES['source_file']
-            
+                project.save()  # 先保存檔案路徑
+                
+                # 立即處理 CSV 檔案
+                from .services.data_import_service import DataImportService
+                import_service = DataImportService(project)
+                import_result = import_service.import_csv_data(request.FILES['source_file'])
+                
+                if import_result['success']:
+                    summary = import_result['summary']
+                    messages.success(
+                        request, 
+                        f'專案 "{name}" 創建成功！已匯入 {summary["imported_boreholes"]} 個鑽孔，{summary["imported_layers"]} 個土層。'
+                    )
+                    
+                    # 顯示警告訊息
+                    for warning in import_result.get('warnings', []):
+                        messages.warning(request, f'警告：{warning}')
+                        
+                    csv_processed = True
+                else:
+                    messages.error(request, f'CSV 檔案處理失敗：{import_result["error"]}')
+                    project.status = 'error'
+                    project.error_message = import_result["error"]
+
             if 'fault_shapefile' in request.FILES:
                 project.fault_shapefile = request.FILES['fault_shapefile']
-            
+
             project.save()
+
+            if not csv_processed:
+                messages.success(request, f'專案 "{name}" 創建成功！請上傳 CSV 檔案以開始分析。')
             
             messages.success(request, f'專案 "{name}" 創建成功！')
             return redirect('liquefaction:project_detail', pk=project.pk)
@@ -296,6 +324,9 @@ def analyze(request, pk):
     
     if request.method == 'POST':
         try:
+            print(f"=== 開始分析專案 {project.name} ===")
+            print(f"分析方法: {project.analysis_method}")
+            
             # 檢查專案狀態
             if project.status == 'processing':
                 messages.warning(request, '專案正在分析中，請稍候...')
@@ -312,6 +343,19 @@ def analyze(request, pk):
             if layers_count == 0:
                 messages.error(request, '專案中沒有土層資料')
                 return redirect('liquefaction:project_detail', pk=project.pk)
+                        
+            print("正在載入分析引擎...")
+            # 執行液化分析
+            from .services.analysis_engine import LiquefactionAnalysisEngine
+            
+            print("創建分析引擎實例...")
+            analysis_engine = LiquefactionAnalysisEngine(project)
+            
+            print("執行分析...")
+            analysis_result = analysis_engine.run_analysis()
+            
+            print(f"分析結果: {analysis_result}")
+            
             
             # 執行液化分析
             from .services.analysis_engine import LiquefactionAnalysisEngine

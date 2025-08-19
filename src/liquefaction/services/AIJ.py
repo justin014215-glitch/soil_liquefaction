@@ -33,7 +33,17 @@ from datetime import datetime
 (2) 細料含量>35%，其黏土含量<15%或塑性指數 Ip<15 之回填土層。
 '''
 
-
+def setup_django_paths():
+    """設定 Django 路徑 - 簡化版本"""
+    try:
+        from django.conf import settings
+        # 在 Django 環境中，不需要特別設定路徑
+        pass
+    except ImportError:
+        # 非 Django 環境的處理
+        pass
+# 在檔案開頭呼叫
+setup_django_paths()
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)

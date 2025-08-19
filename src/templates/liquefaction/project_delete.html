@@ -1,0 +1,69 @@
+{% extends 'base.html' %}
+
+{% block title %}刪除專案 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-trash text-danger"></i> 刪除專案</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">刪除</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row justify-content-center">
+    <div class="col-md-6">
+        <div class="card border-danger">
+            <div class="card-header bg-danger text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-exclamation-triangle"></i> 確認刪除</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>警告：此操作無法復原！</strong>
+                </div>
+                
+                <p>您確定要刪除專案 <strong>"{{ project.name }}"</strong> 嗎？</p>
+                
+                <div class="mb-3">
+                    <strong>專案資訊：</strong>
+                    <ul class="mt-2">
+                        <li>專案名稱：{{ project.name }}</li>
+                        <li>分析方法：{{ project.get_analysis_method_display }}</li>
+                        <li>建立時間：{{ project.created_at|date:"Y年m月d日 H:i" }}</li>
+                        <li>狀態：{{ project.get_status_display }}</li>
+                    </ul>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <strong>刪除此專案將會：</strong>
+                    <ul class="mb-0">
+                        <li>永久刪除所有鑽孔資料</li>
+                        <li>永久刪除所有土層資料</li>
+                        <li>永久刪除所有分析結果</li>
+                        <li>刪除相關的上傳檔案</li>
+                    </ul>
+                </div>
+                
+                <form method="post" class="mt-4">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> 取消
+                        </a>
+                        <button type="submit" class="btn btn-danger">
+                            <i class="fas fa-trash"></i> 確認刪除
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
