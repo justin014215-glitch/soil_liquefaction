@@ -357,9 +357,15 @@ def analyze(request, pk):
     
     return render(request, 'liquefaction/analyze.html', context)
 @login_required
+@login_required
 def results(request, pk):
     """查看分析結果"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    # 檢查專案狀態
+    if project.status != 'completed':
+        messages.warning(request, '專案尚未完成分析或分析失敗')
+        return redirect('liquefaction:project_detail', pk=project.pk)
     
     # 獲取所有分析結果
     results = AnalysisResult.objects.filter(
@@ -367,6 +373,19 @@ def results(request, pk):
     ).select_related('soil_layer', 'soil_layer__borehole').order_by(
         'soil_layer__borehole__borehole_id', 'soil_layer__top_depth'
     )
+    
+    # 應用篩選條件
+    borehole_filter = request.GET.get('borehole', '')
+    if borehole_filter:
+        results = results.filter(soil_layer__borehole__borehole_id=borehole_filter)
+    
+    safety_filter = request.GET.get('safety', '')
+    if safety_filter == 'danger':
+        results = results.filter(fs_design__lt=1.0)
+    elif safety_filter == 'warning':
+        results = results.filter(fs_design__gte=1.0, fs_design__lt=1.3)
+    elif safety_filter == 'safe':
+        results = results.filter(fs_design__gte=1.3)
     
     context = {
         'project': project,
@@ -381,9 +400,83 @@ def export_results(request, pk):
     """匯出分析結果"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
-    # 這裡將來會實作結果匯出邏輯
-    return JsonResponse({'message': '匯出功能開發中'})
-
+    # 檢查專案狀態
+    if project.status != 'completed':
+        messages.error(request, '專案尚未完成分析，無法匯出結果')
+        return redirect('liquefaction:project_detail', pk=project.pk)
+    
+    try:
+        import csv
+        from django.http import HttpResponse
+        from datetime import datetime
+        
+        # 創建 HTTP 響應
+        response = HttpResponse(content_type='text/csv; charset=utf-8')
+        response['Content-Disposition'] = f'attachment; filename="{project.name}_analysis_results_{datetime.now().strftime("%Y%m%d_%H%M")}.csv"'
+        
+        # 添加 BOM 以確保 Excel 正確顯示中文
+        response.write('\ufeff')
+        
+        writer = csv.writer(response)
+        
+        # 寫入標題行
+        headers = [
+            '鑽孔編號', '深度上限(m)', '深度下限(m)', '土壤分類', 'SPT-N', 'N1_60cs', 'Vs(m/s)',
+            '設計地震_Mw', '設計地震_amax(g)', '設計地震_CSR', '設計地震_CRR', '設計地震_FS', '設計地震_LPI',
+            '中小地震_Mw', '中小地震_amax(g)', '中小地震_CSR', '中小地震_CRR', '中小地震_FS', '中小地震_LPI',
+            '最大地震_Mw', '最大地震_amax(g)', '最大地震_CSR', '最大地震_CRR', '最大地震_FS', '最大地震_LPI'
+        ]
+        writer.writerow(headers)
+        
+        # 獲取分析結果
+        results = AnalysisResult.objects.filter(
+            soil_layer__borehole__project=project
+        ).select_related('soil_layer', 'soil_layer__borehole').order_by(
+            'soil_layer__borehole__borehole_id', 'soil_layer__top_depth'
+        )
+        
+        # 寫入資料行
+        for result in results:
+            row = [
+                result.soil_layer.borehole.borehole_id,
+                result.soil_layer.top_depth,
+                result.soil_layer.bottom_depth,
+                result.soil_layer.uscs or '',
+                result.soil_layer.spt_n or '',
+                result.n1_60cs or '',
+                result.vs or '',
+                
+                # 設計地震
+                result.mw_design or '',
+                result.a_value_design or '',
+                result.csr_design or '',
+                result.crr_design or '',
+                result.fs_design or '',
+                result.lpi_design or '',
+                
+                # 中小地震
+                result.mw_mid or '',
+                result.a_value_mid or '',
+                result.csr_mid or '',
+                result.crr_mid or '',
+                result.fs_mid or '',
+                result.lpi_mid or '',
+                
+                # 最大地震
+                result.mw_max or '',
+                result.a_value_max or '',
+                result.csr_max or '',
+                result.crr_max or '',
+                result.fs_max or '',
+                result.lpi_max or ''
+            ]
+            writer.writerow(row)
+        
+        return response
+        
+    except Exception as e:
+        messages.error(request, f'匯出結果時發生錯誤：{str(e)}')
+        return redirect('liquefaction:results', pk=project.pk)
 
 def api_seismic_data(request):
     """API：獲取地震參數資料"""
