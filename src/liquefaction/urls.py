@@ -24,4 +24,7 @@ urlpatterns = [
     
     # API 端點
     path('api/seismic-data/', views.api_seismic_data, name='api_seismic_data'),
+
+    
+    path('projects/', views.project_list, name='project_list'),
 ]

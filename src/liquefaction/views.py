@@ -7,14 +7,18 @@ from django.db.models import Q
 from django.utils import timezone
 import json
 import os
-from .models import AnalysisProject, BoreholeData, SoilLayer, AnalysisResult
+from .models import AnalysisProject, BoreholeData, SoilLayer, AnalysisResult, Project
 
+
+def project_list(request):
+    projects = Project.objects.all().order_by('-created_at')
+    return render(request, 'liquefaction/project_list.html', {'projects': projects})
 
 def index(request):
     """首頁視圖"""
     context = {
         'title': '土壤液化分析系統',
-        'description': '專業的土壤液化潛能分析工具，支援多種分析方法及標準',
+        'description': '土壤液化潛能分析工具',
     }
     
     if request.user.is_authenticated:
@@ -123,8 +127,21 @@ def project_detail(request, pk):
     """專案詳情視圖"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
-    # 獲取鑽孔資料
-    boreholes = BoreholeData.objects.filter(project=project).order_by('borehole_id')
+    # 獲取鑽孔資料，並預先載入相關的土層資料
+    boreholes = BoreholeData.objects.filter(project=project).prefetch_related('soil_layers').order_by('borehole_id')
+    
+    # 為每個鑽孔計算最大深度
+    boreholes_with_stats = []
+    for borehole in boreholes:
+        soil_layers = borehole.soil_layers.all()
+        max_depth = max([layer.bottom_depth for layer in soil_layers]) if soil_layers else 0
+        
+        borehole_data = {
+            'borehole': borehole,
+            'layers_count': soil_layers.count(),
+            'max_depth': max_depth
+        }
+        boreholes_with_stats.append(borehole_data)
     
     # 獲取分析結果統計
     total_layers = SoilLayer.objects.filter(borehole__project=project).count()
@@ -132,17 +149,19 @@ def project_detail(request, pk):
         soil_layer__borehole__project=project
     ).count()
     
+    # 計算分析進度
+    analysis_progress = (analyzed_layers / total_layers * 100) if total_layers > 0 else 0
+    
     context = {
         'project': project,
         'boreholes': boreholes,
+        'boreholes_with_stats': boreholes_with_stats,
         'total_layers': total_layers,
         'analyzed_layers': analyzed_layers,
-        'analysis_progress': (analyzed_layers / total_layers * 100) if total_layers > 0 else 0,
+        'analysis_progress': round(analysis_progress, 1),
     }
     
     return render(request, 'liquefaction/project_detail.html', context)
-
-
 @login_required
 def project_update(request, pk):
     """更新專案"""
@@ -195,6 +214,7 @@ def project_delete(request, pk):
     return render(request, 'liquefaction/project_delete.html', {'project': project})
 
 
+
 @login_required
 def file_upload(request, pk):
     """檔案上傳處理"""
@@ -202,14 +222,72 @@ def file_upload(request, pk):
     
     if request.method == 'POST':
         try:
-            # 這裡將來會實作 CSV 檔案解析邏輯
-            messages.success(request, '檔案上傳成功！')
-            return redirect('liquefaction:project_detail', pk=project.pk)
-        except Exception as e:
-            messages.error(request, f'檔案上傳失敗：{str(e)}')
-    
-    return render(request, 'liquefaction/file_upload.html', {'project': project})
+            if 'csv_file' not in request.FILES:
+                messages.error(request, '請選擇要上傳的 CSV 檔案')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            csv_file = request.FILES['csv_file']
+            
+            # 檢查檔案類型
+            if not csv_file.name.endswith('.csv'):
+                messages.error(request, '請上傳 CSV 格式的檔案')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 檢查檔案大小 (限制 10MB)
+            if csv_file.size > 10 * 1024 * 1024:
+                messages.error(request, '檔案大小不能超過 10MB')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 使用 DataImportService 匯入資料
+            from .services.data_import_service import DataImportService
+            import_service = DataImportService(project)
+            import_result = import_service.import_csv_data(csv_file)
+            
+            if import_result['success']:
+                # 匯入成功
+                summary = import_result['summary']
+                messages.success(
+                    request, 
+                    f'CSV 檔案上傳成功！已匯入 {summary["imported_boreholes"]} 個鑽孔，{summary["imported_layers"]} 個土層。'
+                )
+                
+                # 顯示警告訊息（如果有）
+                for warning in import_result.get('warnings', []):
+                    messages.warning(request, f'警告：{warning}')
+                
+                # 顯示錯誤訊息（如果有）
+                for error in import_result.get('errors', []):
+                    messages.error(request, f'錯誤：{error}')
+                
+                # 更新專案狀態
+                project.status = 'pending'  # 等待分析
+                project.error_message = ''
+                project.save()
+                
+            else:
+                # 匯入失敗
+                messages.error(request, f'CSV 檔案處理失敗：{import_result["error"]}')
+                # 如果是缺少欄位的問題，提供詳細資訊
+                if 'missing_fields' in import_result:
+                    messages.info(request, f'可用的欄位：{", ".join(import_result["available_columns"])}')
+                    messages.info(request, '請確保 CSV 檔案包含所有必要欄位，或使用相應的中文欄位名稱')
 
+                # 顯示詳細錯誤訊息
+                for error in import_result.get('errors', []):
+                    messages.error(request, f'詳細錯誤：{error}')
+                
+                # 更新專案狀態
+                project.status = 'error'
+                project.error_message = import_result["error"]
+                project.save()
+                
+        except Exception as e:
+            messages.error(request, f'檔案上傳過程中發生錯誤：{str(e)}')
+            project.status = 'error'
+            project.error_message = str(e)
+            project.save()
+    
+    return redirect('liquefaction:project_detail', pk=project.pk)
 
 @login_required
 def analyze(request, pk):
@@ -218,18 +296,66 @@ def analyze(request, pk):
     
     if request.method == 'POST':
         try:
-            # 這裡將來會實作液化分析邏輯
-            project.status = 'processing'
+            # 檢查專案狀態
+            if project.status == 'processing':
+                messages.warning(request, '專案正在分析中，請稍候...')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 檢查是否有鑽孔資料
+            boreholes_count = BoreholeData.objects.filter(project=project).count()
+            if boreholes_count == 0:
+                messages.error(request, '專案中沒有鑽孔資料，請先上傳 CSV 檔案')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 檢查是否有土層資料
+            layers_count = SoilLayer.objects.filter(borehole__project=project).count()
+            if layers_count == 0:
+                messages.error(request, '專案中沒有土層資料')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 執行液化分析
+            from .services.analysis_engine import LiquefactionAnalysisEngine
+            
+            analysis_engine = LiquefactionAnalysisEngine(project)
+            analysis_result = analysis_engine.run_analysis()
+            
+            if analysis_result['success']:
+                messages.success(
+                    request, 
+                    f'液化分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層，'
+                    f'使用 {analysis_result["analysis_method"]} 方法。'
+                )
+                
+                # 顯示警告訊息
+                for warning in analysis_result.get('warnings', []):
+                    messages.warning(request, f'警告：{warning}')
+                
+                return redirect('liquefaction:results', pk=project.pk)
+            else:
+                messages.error(request, f'液化分析失敗：{analysis_result["error"]}')
+                
+                # 顯示詳細錯誤
+                for error in analysis_result.get('errors', []):
+                    messages.error(request, f'錯誤：{error}')
+                
+                return redirect('liquefaction:project_detail', pk=project.pk)
+                
+        except Exception as e:
+            messages.error(request, f'分析過程中發生錯誤：{str(e)}')
+            project.status = 'error'
+            project.error_message = str(e)
             project.save()
             
-            messages.success(request, '分析已開始執行！')
             return redirect('liquefaction:project_detail', pk=project.pk)
-        except Exception as e:
-            messages.error(request, f'分析執行失敗：{str(e)}')
     
-    return render(request, 'liquefaction/analyze.html', {'project': project})
-
-
+    # GET 請求，顯示分析確認頁面
+    context = {
+        'project': project,
+        'boreholes_count': BoreholeData.objects.filter(project=project).count(),
+        'layers_count': SoilLayer.objects.filter(borehole__project=project).count(),
+    }
+    
+    return render(request, 'liquefaction/analyze.html', context)
 @login_required
 def results(request, pk):
     """查看分析結果"""

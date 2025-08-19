@@ -1,0 +1,91 @@
+{% extends 'base.html' %}
+
+{% block title %}開始分析 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-play"></i> 開始液化分析</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">開始分析</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> 分析確認</h5>
+            </div>
+            <div class="card-body">
+                <p>您即將對專案 <strong>{{ project.name }}</strong> 執行液化分析。</p>
+                
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-chart-bar"></i> 資料摘要</h6>
+                    <ul class="mb-0">
+                        <li>鑽孔數量：{{ boreholes_count }} 個</li>
+                        <li>土層數量：{{ layers_count }} 個</li>
+                        <li>分析方法：{{ project.get_analysis_method_display }}</li>
+                        <li>錘擊效率：{{ project.em_value }}%</li>
+                    </ul>
+                </div>
+                
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>注意：</strong>
+                    <ul class="mb-0">
+                        <li>分析過程可能需要數分鐘時間</li>
+                        <li>分析期間請勿關閉瀏覽器</li>
+                        <li>現有的分析結果將被覆蓋</li>
+                    </ul>
+                </div>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> 返回
+                        </a>
+                        <button type="submit" class="btn btn-analyze btn-lg">
+                            <i class="fas fa-play"></i> 開始分析
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0"><i class="fas fa-lightbulb"></i> 分析說明</h6>
+            </div>
+            <div class="card-body">
+                <h6>{{ project.get_analysis_method_display }} 方法特色：</h6>
+                {% if project.analysis_method == 'HBF' %}
+                <p>適用於台灣地區的液化評估方法，考慮細料含量修正。</p>
+                {% elif project.analysis_method == 'NCEER' %}
+                <p>國際廣泛使用的標準方法，基於 SPT-N 值評估。</p>
+                {% else %}
+                <p>可靠的液化評估方法。</p>
+                {% endif %}
+                
+                <h6 class="mt-3">分析項目：</h6>
+                <ul class="list-unstyled">
+                    <li>• 設計地震液化潛能</li>
+                    <li>• 中小地震液化潛能</li>
+                    <li>• 最大地震液化潛能</li>
+                    <li>• 安全係數計算</li>
+                    <li>• 液化潛能指數 (LPI)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

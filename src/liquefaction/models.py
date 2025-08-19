@@ -6,6 +6,16 @@ import uuid
 import os
 
 
+
+class Project(models.Model):
+    name = models.CharField(max_length=200)
+    description = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return self.name
+
+
 def get_default_shapefile_path():
     """取得預設shapefile路徑"""
     return 'default_shapefiles/110全臺36條活動斷層數值檔(111年編修)_1110727.shp'
