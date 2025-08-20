@@ -153,10 +153,67 @@ def project_create(request):
 
 @login_required
 def project_detail(request, pk):
-    """專案詳情視圖"""
+    """專案詳情視圖 - 新增快速分析功能"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
-    # 獲取鑽孔資料，並預先載入相關的土層資料
+    # 處理快速分析請求
+    if request.method == 'POST':
+        selected_methods = request.POST.getlist('analysis_methods')
+        if not selected_methods:
+            messages.error(request, '請至少選擇一種分析方法')
+            return redirect('liquefaction:project_detail', pk=project.pk)
+        
+        # 檢查是否有資料
+        boreholes_count = BoreholeData.objects.filter(project=project).count()
+        if boreholes_count == 0:
+            messages.error(request, '專案中沒有鑽孔資料，請先上傳 CSV 檔案')
+            return redirect('liquefaction:project_detail', pk=project.pk)
+        
+        # 執行分析
+        try:
+            from .services.analysis_engine import LiquefactionAnalysisEngine
+            
+            total_success = 0
+            total_errors = []
+            
+            for method in selected_methods:
+                # 暫時更新專案的分析方法
+                original_method = project.analysis_method
+                project.analysis_method = method
+                project.save()
+                
+                # 執行分析
+                analysis_engine = LiquefactionAnalysisEngine(project)
+                analysis_result = analysis_engine.run_analysis()
+                
+                if analysis_result['success']:
+                    total_success += 1
+                    messages.success(request, f'{method} 分析完成！')
+                else:
+                    total_errors.append(f'{method}: {analysis_result["error"]}')
+                    messages.error(request, f'{method} 分析失敗：{analysis_result["error"]}')
+                
+                # 恢復原始分析方法
+                project.analysis_method = original_method
+                project.save()
+            
+            if total_success > 0:
+                project.status = 'completed'
+                project.save()
+                messages.success(request, f'分析完成！成功完成 {total_success} 種方法的分析')
+                return redirect('liquefaction:results', pk=project.pk)
+            else:
+                project.status = 'error'
+                project.error_message = '; '.join(total_errors)
+                project.save()
+                
+        except Exception as e:
+            messages.error(request, f'分析過程中發生錯誤：{str(e)}')
+            project.status = 'error'
+            project.error_message = str(e)
+            project.save()
+    
+    # 獲取鑽孔資料
     boreholes = BoreholeData.objects.filter(project=project).prefetch_related('soil_layers').order_by('borehole_id')
     
     # 為每個鑽孔計算最大深度
@@ -174,23 +231,33 @@ def project_detail(request, pk):
     
     # 獲取分析結果統計
     total_layers = SoilLayer.objects.filter(borehole__project=project).count()
-    analyzed_layers = AnalysisResult.objects.filter(
-        soil_layer__borehole__project=project
-    ).count()
     
-    # 計算分析進度
-    analysis_progress = (analyzed_layers / total_layers * 100) if total_layers > 0 else 0
+    # 統計各方法的分析結果
+    analysis_methods_stats = {}
+    for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
+        analyzed_count = AnalysisResult.objects.filter(
+            soil_layer__borehole__project=project,
+            analysis_method=method_code
+        ).count()
+        analysis_methods_stats[method_code] = {
+            'name': method_name,
+            'count': analyzed_count,
+            'progress': (analyzed_count / total_layers * 100) if total_layers > 0 else 0
+        }
     
     context = {
         'project': project,
         'boreholes': boreholes,
         'boreholes_with_stats': boreholes_with_stats,
         'total_layers': total_layers,
-        'analyzed_layers': analyzed_layers,
-        'analysis_progress': round(analysis_progress, 1),
+        'analysis_methods_stats': analysis_methods_stats,
+        'available_methods': AnalysisProject._meta.get_field('analysis_method').choices,
     }
     
     return render(request, 'liquefaction/project_detail.html', context)
+
+
+
 @login_required
 def project_update(request, pk):
     """更新專案"""
@@ -322,18 +389,21 @@ def file_upload(request, pk):
 
 @login_required
 def analyze(request, pk):
-    """執行液化分析"""
+    """執行液化分析 - 支援多方法分析"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
     if request.method == 'POST':
         try:
-            print(f"=== 開始分析專案 {project.name} ===")
-            print(f"分析方法: {project.analysis_method}")
-            print(f"當前專案狀態: {project.status}")
+            # 獲取選擇的分析方法
+            selected_methods = request.POST.getlist('analysis_methods')
+            if not selected_methods:
+                messages.error(request, '請至少選擇一種分析方法')
+                return redirect('liquefaction:analyze', pk=project.pk)
             
-            # 檢查專案狀態 - 智能處理 processing 狀態
+            print(f"=== 開始分析專案 {project.name}，方法：{selected_methods} ===")
+            
+            # 檢查專案狀態
             if project.status == 'processing':
-                # 檢查更新時間，如果超過10分鐘沒更新，認為分析已中斷
                 from django.utils import timezone
                 import datetime
                 
@@ -362,36 +432,57 @@ def analyze(request, pk):
                 return redirect('liquefaction:project_detail', pk=project.pk)
             
             print("正在載入分析引擎...")
-            # 執行液化分析
             from .services.analysis_engine import LiquefactionAnalysisEngine
             
-            print("創建分析引擎實例...")
-            analysis_engine = LiquefactionAnalysisEngine(project)
+            total_success = 0
+            total_errors = []
+            original_method = project.analysis_method
             
-            print("執行分析...")
-            analysis_result = analysis_engine.run_analysis()
-            
-            print(f"分析結果: {analysis_result}")
-            
-            if analysis_result['success']:
-                messages.success(
-                    request, 
-                    f'液化分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層，'
-                    f'使用 {analysis_result["analysis_method"]} 方法。'
-                )
+            for method in selected_methods:
+                print(f"開始執行 {method} 分析...")
                 
-                # 顯示警告訊息
-                for warning in analysis_result.get('warnings', []):
-                    messages.warning(request, f'警告：{warning}')
+                # 暫時更新專案的分析方法
+                project.analysis_method = method
+                project.save()
                 
+                # 創建分析引擎並執行分析
+                analysis_engine = LiquefactionAnalysisEngine(project)
+                analysis_result = analysis_engine.run_analysis()
+                
+                print(f"{method} 分析結果: {analysis_result}")
+                
+                if analysis_result['success']:
+                    total_success += 1
+                    messages.success(
+                        request, 
+                        f'{method} 分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層。'
+                    )
+                    
+                    # 顯示警告訊息
+                    for warning in analysis_result.get('warnings', []):
+                        messages.warning(request, f'{method} 警告：{warning}')
+                else:
+                    total_errors.append(f'{method}: {analysis_result["error"]}')
+                    messages.error(request, f'{method} 分析失敗：{analysis_result["error"]}')
+                    
+                    # 顯示詳細錯誤
+                    for error in analysis_result.get('errors', []):
+                        messages.error(request, f'{method} 錯誤：{error}')
+            
+            # 恢復原始分析方法
+            project.analysis_method = original_method
+            
+            # 更新專案狀態
+            if total_success > 0:
+                project.status = 'completed'
+                project.error_message = ''
+                project.save()
+                messages.success(request, f'多方法分析完成！成功完成 {total_success}/{len(selected_methods)} 種方法的分析')
                 return redirect('liquefaction:results', pk=project.pk)
             else:
-                messages.error(request, f'液化分析失敗：{analysis_result["error"]}')
-                
-                # 顯示詳細錯誤
-                for error in analysis_result.get('errors', []):
-                    messages.error(request, f'錯誤：{error}')
-                
+                project.status = 'error'
+                project.error_message = '; '.join(total_errors)
+                project.save()
                 return redirect('liquefaction:project_detail', pk=project.pk)
                 
         except Exception as e:
@@ -407,10 +498,10 @@ def analyze(request, pk):
         'project': project,
         'boreholes_count': BoreholeData.objects.filter(project=project).count(),
         'layers_count': SoilLayer.objects.filter(borehole__project=project).count(),
+        'available_methods': AnalysisProject._meta.get_field('analysis_method').choices,
     }
     
     return render(request, 'liquefaction/analyze.html', context)
-
 
 # 添加一個新的 view 用於重置專案狀態
 @login_required
@@ -464,18 +555,51 @@ def results(request, pk):
         'project': project,
         'results': results,
     }
+    # 新增：分析方法篩選
+    method_filter = request.GET.get('method', '')
+    if method_filter:
+        results = results.filter(analysis_method=method_filter)
+    
+    safety_filter = request.GET.get('safety', '')
+    if safety_filter == 'danger':
+        results = results.filter(fs_design__lt=1.0)
+    elif safety_filter == 'warning':
+        results = results.filter(fs_design__gte=1.0, fs_design__lt=1.3)
+    elif safety_filter == 'safe':
+        results = results.filter(fs_design__gte=1.3)
+    
+    # 獲取可用的分析方法
+    available_methods = AnalysisResult.objects.filter(
+        soil_layer__borehole__project=project
+    ).values_list('analysis_method', flat=True).distinct()
+    
+    # 獲取方法名稱對應
+    method_choices = dict(AnalysisProject._meta.get_field('analysis_method').choices)
+    available_methods_display = [(method, method_choices.get(method, method)) for method in available_methods]
+    
+    context = {
+        'project': project,
+        'results': results,
+        'available_methods': available_methods_display,
+        'method_filter': method_filter,
+    }
     
     return render(request, 'liquefaction/results.html', context)
 
 
+
 @login_required
 def export_results(request, pk):
-    """匯出分析結果"""
+    """匯出分析結果 - 支援多方法"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
-    # 檢查專案狀態
-    if project.status != 'completed':
-        messages.error(request, '專案尚未完成分析，無法匯出結果')
+    # 檢查是否有分析結果
+    total_results = AnalysisResult.objects.filter(
+        soil_layer__borehole__project=project
+    ).count()
+    
+    if total_results == 0:
+        messages.error(request, '專案尚未有分析結果，無法匯出')
         return redirect('liquefaction:project_detail', pk=project.pk)
     
     try:
@@ -483,18 +607,26 @@ def export_results(request, pk):
         from django.http import HttpResponse
         from datetime import datetime
         
+        # 獲取選擇的方法（如果有）
+        method_filter = request.GET.get('method', '')
+        
         # 創建 HTTP 響應
+        if method_filter:
+            filename = f"{project.name}_{method_filter}_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        else:
+            filename = f"{project.name}_all_methods_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+            
         response = HttpResponse(content_type='text/csv; charset=utf-8')
-        response['Content-Disposition'] = f'attachment; filename="{project.name}_analysis_results_{datetime.now().strftime("%Y%m%d_%H%M")}.csv"'
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
         
         # 添加 BOM 以確保 Excel 正確顯示中文
         response.write('\ufeff')
         
         writer = csv.writer(response)
         
-        # 寫入標題行
+        # 寫入標題行 - 包含分析方法欄位
         headers = [
-            '鑽孔編號', '深度上限(m)', '深度下限(m)', '土壤分類', 'SPT-N', 'N1_60cs', 'Vs(m/s)',
+            '鑽孔編號', '分析方法', '深度上限(m)', '深度下限(m)', '土壤分類', 'SPT-N', 'N1_60cs', 'Vs(m/s)',
             '設計地震_Mw', '設計地震_amax(g)', '設計地震_CSR', '設計地震_CRR', '設計地震_FS', '設計地震_LPI',
             '中小地震_Mw', '中小地震_amax(g)', '中小地震_CSR', '中小地震_CRR', '中小地震_FS', '中小地震_LPI',
             '最大地震_Mw', '最大地震_amax(g)', '最大地震_CSR', '最大地震_CRR', '最大地震_FS', '最大地震_LPI'
@@ -505,13 +637,18 @@ def export_results(request, pk):
         results = AnalysisResult.objects.filter(
             soil_layer__borehole__project=project
         ).select_related('soil_layer', 'soil_layer__borehole').order_by(
-            'soil_layer__borehole__borehole_id', 'soil_layer__top_depth'
+            'soil_layer__borehole__borehole_id', 'soil_layer__top_depth', 'analysis_method'
         )
+        
+        # 應用方法篩選
+        if method_filter:
+            results = results.filter(analysis_method=method_filter)
         
         # 寫入資料行
         for result in results:
             row = [
                 result.soil_layer.borehole.borehole_id,
+                result.analysis_method,  # 新增：分析方法
                 result.soil_layer.top_depth,
                 result.soil_layer.bottom_depth,
                 result.soil_layer.uscs or '',
@@ -550,7 +687,6 @@ def export_results(request, pk):
     except Exception as e:
         messages.error(request, f'匯出結果時發生錯誤：{str(e)}')
         return redirect('liquefaction:results', pk=project.pk)
-
 def api_seismic_data(request):
     """API：獲取地震參數資料"""
     city = request.GET.get('city', '')
@@ -566,14 +702,21 @@ def api_seismic_data(request):
         'message': 'API 開發中'
     })
 
+
 @login_required
 def reanalyze(request, pk):
-    """重新執行液化分析"""
+    """重新執行液化分析 - 支援多方法"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
     if request.method == 'POST':
         try:
-            print(f"=== 開始重新分析專案 {project.name} ===")
+            # 獲取選擇的分析方法
+            selected_methods = request.POST.getlist('analysis_methods')
+            if not selected_methods:
+                messages.error(request, '請至少選擇一種分析方法')
+                return redirect('liquefaction:reanalyze', pk=project.pk)
+            
+            print(f"=== 開始重新分析專案 {project.name}，方法：{selected_methods} ===")
             
             # 檢查專案狀態
             if project.status == 'processing':
@@ -592,58 +735,76 @@ def reanalyze(request, pk):
                 messages.error(request, '專案中沒有土層資料，無法進行分析')
                 return redirect('liquefaction:project_detail', pk=project.pk)
             
-            # 清除現有的分析結果
-            print("正在清除現有分析結果...")
-            deleted_count = AnalysisResult.objects.filter(
-                soil_layer__borehole__project=project
-            ).count()
+            # 清除選中方法的現有分析結果
+            for method in selected_methods:
+                deleted_count = AnalysisResult.objects.filter(
+                    soil_layer__borehole__project=project,
+                    analysis_method=method
+                ).count()
+                
+                AnalysisResult.objects.filter(
+                    soil_layer__borehole__project=project,
+                    analysis_method=method
+                ).delete()
+                
+                print(f"已清除 {method} 方法的 {deleted_count} 個現有分析結果")
             
-            AnalysisResult.objects.filter(
-                soil_layer__borehole__project=project
-            ).delete()
-            
-            print(f"已清除 {deleted_count} 個現有分析結果")
-            
-            # ====== 重要修改：不要在這裡設定狀態為 processing ======
-            # 移除以下兩行：
-            # project.status = 'processing'
-            # project.save()
-            
-            # 重設錯誤訊息，但不改變狀態，讓 analysis_engine 自己管理
+            # 重設錯誤訊息
             project.error_message = ''
             project.save()
             
             print("正在載入分析引擎...")
-            # 執行液化分析
             from .services.analysis_engine import LiquefactionAnalysisEngine
             
-            print("創建分析引擎實例...")
-            analysis_engine = LiquefactionAnalysisEngine(project)
+            total_success = 0
+            total_errors = []
+            original_method = project.analysis_method
             
-            print("執行重新分析...")
-            analysis_result = analysis_engine.run_analysis()
-            
-            print(f"重新分析結果: {analysis_result}")
-            
-            if analysis_result['success']:
-                messages.success(
-                    request, 
-                    f'重新分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層，'
-                    f'使用 {analysis_result["analysis_method"]} 方法。'
-                )
+            for method in selected_methods:
+                print(f"開始重新執行 {method} 分析...")
                 
-                # 顯示警告訊息
-                for warning in analysis_result.get('warnings', []):
-                    messages.warning(request, f'警告：{warning}')
+                # 暫時更新專案的分析方法
+                project.analysis_method = method
+                project.save()
                 
+                # 創建分析引擎並執行分析
+                analysis_engine = LiquefactionAnalysisEngine(project)
+                analysis_result = analysis_engine.run_analysis()
+                
+                print(f"{method} 重新分析結果: {analysis_result}")
+                
+                if analysis_result['success']:
+                    total_success += 1
+                    messages.success(
+                        request, 
+                        f'{method} 重新分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層。'
+                    )
+                    
+                    # 顯示警告訊息
+                    for warning in analysis_result.get('warnings', []):
+                        messages.warning(request, f'{method} 警告：{warning}')
+                else:
+                    total_errors.append(f'{method}: {analysis_result["error"]}')
+                    messages.error(request, f'{method} 重新分析失敗：{analysis_result["error"]}')
+                    
+                    # 顯示詳細錯誤
+                    for error in analysis_result.get('errors', []):
+                        messages.error(request, f'{method} 錯誤：{error}')
+            
+            # 恢復原始分析方法
+            project.analysis_method = original_method
+            
+            # 更新專案狀態
+            if total_success > 0:
+                project.status = 'completed'
+                project.error_message = ''
+                project.save()
+                messages.success(request, f'重新分析完成！成功完成 {total_success}/{len(selected_methods)} 種方法的分析')
                 return redirect('liquefaction:results', pk=project.pk)
             else:
-                messages.error(request, f'重新分析失敗：{analysis_result["error"]}')
-                
-                # 顯示詳細錯誤
-                for error in analysis_result.get('errors', []):
-                    messages.error(request, f'錯誤：{error}')
-                
+                project.status = 'error'
+                project.error_message = '; '.join(total_errors)
+                project.save()
                 return redirect('liquefaction:project_detail', pk=project.pk)
                 
         except Exception as e:
@@ -655,17 +816,28 @@ def reanalyze(request, pk):
             return redirect('liquefaction:project_detail', pk=project.pk)
     
     # GET 請求，顯示重新分析確認頁面
+    # 獲取現有的分析結果統計
+    existing_results_by_method = {}
+    for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
+        count = AnalysisResult.objects.filter(
+            soil_layer__borehole__project=project,
+            analysis_method=method_code
+        ).count()
+        if count > 0:
+            existing_results_by_method[method_code] = {
+                'name': method_name,
+                'count': count
+            }
+    
     context = {
         'project': project,
         'boreholes_count': BoreholeData.objects.filter(project=project).count(),
         'layers_count': SoilLayer.objects.filter(borehole__project=project).count(),
-        'existing_results_count': AnalysisResult.objects.filter(
-            soil_layer__borehole__project=project
-        ).count(),
+        'existing_results_by_method': existing_results_by_method,
+        'available_methods': AnalysisProject._meta.get_field('analysis_method').choices,
     }
     
     return render(request, 'liquefaction/reanalyze.html', context)
-
 @login_required
 def download_analysis_file(request, pk, filename):
     """下載分析結果檔案"""

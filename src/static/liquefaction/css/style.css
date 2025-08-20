@@ -215,3 +215,192 @@ body {
 .custom-scrollbar::-webkit-scrollbar-thumb:hover {
     background: #0056b3;
 }
+/* 添加到 src/static/liquefaction/css/style.css */
+
+/* 方法選擇區域樣式 */
+.method-selection-card {
+    border: 2px solid #e9ecef;
+    transition: border-color 0.3s ease;
+}
+
+.method-selection-card:hover {
+    border-color: #007bff;
+}
+
+.method-selection-card.selected {
+    border-color: #28a745;
+    background-color: #f8fff9;
+}
+
+/* 方法狀態徽章 */
+.method-status-badge {
+    position: relative;
+    overflow: hidden;
+}
+
+.method-status-badge::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: linear-gradient(45deg, transparent 30%, rgba(255,255,255,0.3) 50%, transparent 70%);
+    animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+    0% { transform: translateX(-100%); }
+    100% { transform: translateX(100%); }
+}
+
+/* 進度條動畫 */
+.method-progress .progress-bar {
+    transition: width 0.6s ease;
+}
+
+.method-progress.completed .progress-bar {
+    animation: progressComplete 0.5s ease;
+}
+
+@keyframes progressComplete {
+    0% { background-color: #6c757d; }
+    50% { background-color: #ffc107; }
+    100% { background-color: #28a745; }
+}
+
+/* 分析按鈕樣式 */
+.btn-analyze {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+    border: none;
+    color: white;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-analyze:hover {
+    background: linear-gradient(45deg, #0056b3, #004085);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+}
+
+.btn-analyze:active {
+    transform: translateY(0);
+}
+
+/* 方法比較按鈕 */
+.btn-method-compare {
+    background: linear-gradient(45deg, #17a2b8, #138496);
+    border: none;
+    color: white;
+}
+
+.btn-method-compare:hover {
+    background: linear-gradient(45deg, #138496, #0f6674);
+}
+
+/* 結果表格增強 */
+.results-table .method-column {
+    min-width: 80px;
+}
+
+.results-table .method-badge {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.4rem;
+}
+
+/* 方法統計卡片 */
+.method-stats-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.method-stats-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+.method-stats-card.completed {
+    border-left: 4px solid #28a745;
+}
+
+.method-stats-card.pending {
+    border-left: 4px solid #6c757d;
+}
+
+/* 響應式調整 */
+@media (max-width: 768px) {
+    .method-selection-card {
+        margin-bottom: 0.5rem;
+    }
+    
+    .results-table {
+        font-size: 0.75rem;
+    }
+    
+    .results-table th,
+    .results-table td {
+        padding: 0.25rem;
+    }
+}
+
+/* 載入動畫 */
+.loading-spinner {
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #007bff;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 1s linear infinite;
+    margin: 0 auto;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* 方法選擇框樣式 */
+.form-check-input:checked + .form-check-label {
+    color: #007bff;
+    font-weight: 600;
+}
+
+.form-check-input:checked + .form-check-label strong {
+    color: #007bff;
+}
+
+/* 警告和提示樣式 */
+.alert-method-warning {
+    background-color: #fff3cd;
+    border-color: #ffeaa7;
+    color: #856404;
+}
+
+.alert-method-info {
+    background-color: #d1ecf1;
+    border-color: #bee5eb;
+    color: #0c5460;
+}
+
+/* 快速操作按鈕組 */
+.quick-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.quick-actions .btn {
+    flex: 1;
+    min-width: 120px;
+}
+
+@media (max-width: 576px) {
+    .quick-actions {
+        flex-direction: column;
+    }
+    
+    .quick-actions .btn {
+        width: 100%;
+    }
+}

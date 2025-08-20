@@ -57,7 +57,6 @@
                 <a href="{% url 'liquefaction:export' project.pk %}" class="btn btn-success">
                     <i class="fas fa-download"></i> 匯出結果
                 </a>
-                <!-- 新增重新分析按鈕 -->
                 <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
                     <i class="fas fa-redo"></i> 重新分析
                 </a>
@@ -82,7 +81,7 @@
                         <dl class="row mb-0">
                             <dt class="col-sm-6">專案名稱:</dt>
                             <dd class="col-sm-6">{{ project.name }}</dd>
-                            <dt class="col-sm-6">分析方法:</dt>
+                            <dt class="col-sm-6">預設方法:</dt>
                             <dd class="col-sm-6">{{ project.get_analysis_method_display }}</dd>
                         </dl>
                     </div>
@@ -93,27 +92,25 @@
                                 {% regroup results by soil_layer.borehole.borehole_id as borehole_groups %}
                                 {{ borehole_groups|length }}
                             </dd>
-                            <dt class="col-sm-6">分析土層:</dt>
+                            <dt class="col-sm-6">分析結果:</dt>
                             <dd class="col-sm-6">{{ results|length }}</dd>
                         </dl>
                     </div>
                     <div class="col-md-3">
                         <dl class="row mb-0">
-                            <dt class="col-sm-8">液化風險土層:</dt>
+                            <dt class="col-sm-8">可用方法:</dt>
                             <dd class="col-sm-4">
-                                {% for result in results %}
-                                    {% if result.fs_design < 1.3 %}
-                                        <span class="badge bg-danger">{{ forloop.counter }}</span>
-                                    {% endif %}
+                                {% for method_code, method_name in available_methods %}
+                                <span class="badge bg-info me-1">{{ method_code }}</span>
                                 {% endfor %}
                             </dd>
-                            <dt class="col-sm-8">安全土層:</dt>
+                            <dt class="col-sm-8">當前篩選:</dt>
                             <dd class="col-sm-4">
-                                {% for result in results %}
-                                    {% if result.fs_design >= 1.3 %}
-                                        <span class="badge bg-success">{{ forloop.counter }}</span>
-                                    {% endif %}
-                                {% endfor %}
+                                {% if method_filter %}
+                                <span class="badge bg-primary">{{ method_filter }}</span>
+                                {% else %}
+                                <span class="badge bg-secondary">全部</span>
+                                {% endif %}
                             </dd>
                         </dl>
                     </div>
@@ -139,7 +136,19 @@
         <div class="card">
             <div class="card-body">
                 <form method="get" class="row g-3">
-                    <div class="col-md-3">
+                    <!-- 新增：分析方法篩選 -->
+                    <div class="col-md-2">
+                        <label for="method_filter" class="form-label">分析方法</label>
+                        <select class="form-select" id="method_filter" name="method">
+                            <option value="">全部方法</option>
+                            {% for method_code, method_name in available_methods %}
+                            <option value="{{ method_code }}" {% if request.GET.method == method_code %}selected{% endif %}>
+                                {{ method_name }}
+                            </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="col-md-2">
                         <label for="borehole_filter" class="form-label">鑽孔篩選</label>
                         <select class="form-select" id="borehole_filter" name="borehole">
                             <option value="">全部鑽孔</option>
@@ -151,7 +160,7 @@
                             {% endfor %}
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="safety_filter" class="form-label">安全係數篩選</label>
                         <select class="form-select" id="safety_filter" name="safety">
                             <option value="">全部</option>
@@ -160,7 +169,7 @@
                             <option value="safe" {% if request.GET.safety == 'safe' %}selected{% endif %}>安全 (FS ≥ 1.3)</option>
                         </select>
                     </div>
-                    <div class="col-md-3">
+                    <div class="col-md-2">
                         <label for="scenario_display" class="form-label">顯示情境</label>
                         <select class="form-select" id="scenario_display" name="scenario">
                             <option value="design" {% if request.GET.scenario == 'design' or not request.GET.scenario %}selected{% endif %}>設計地震</option>
@@ -169,13 +178,19 @@
                             <option value="all" {% if request.GET.scenario == 'all' %}selected{% endif %}>全部情境</option>
                         </select>
                     </div>
-                    <div class="col-md-3 d-flex align-items-end">
+                    <div class="col-md-4 d-flex align-items-end">
                         <button type="submit" class="btn btn-outline-primary me-2">
                             <i class="fas fa-filter"></i> 篩選
                         </button>
-                        <a href="{% url 'liquefaction:results' project.pk %}" class="btn btn-outline-secondary">
+                        <a href="{% url 'liquefaction:results' project.pk %}" class="btn btn-outline-secondary me-2">
                             <i class="fas fa-undo"></i> 重置
                         </a>
+                        <!-- 新增：方法比較按鈕 -->
+                        {% if available_methods|length > 1 %}
+                        <button type="button" class="btn btn-info" onclick="showMethodComparison()">
+                            <i class="fas fa-balance-scale"></i> 方法比較
+                        </button>
+                        {% endif %}
                     </div>
                 </form>
             </div>
@@ -188,7 +203,12 @@
     <div class="col-12">
         <div class="card">
             <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-table"></i> 詳細結果</h5>
+                <h5 class="card-title mb-0">
+                    <i class="fas fa-table"></i> 詳細結果
+                    {% if method_filter %}
+                    <span class="badge bg-primary ms-2">{{ method_filter }} 方法</span>
+                    {% endif %}
+                </h5>
             </div>
             <div class="card-body p-0">
                 <div class="table-responsive" style="max-height: 600px;">
@@ -196,6 +216,9 @@
                         <thead class="sticky-header">
                             <tr>
                                 <th rowspan="2">鑽孔編號</th>
+                                {% if not method_filter %}
+                                <th rowspan="2">分析<br>方法</th>
+                                {% endif %}
                                 <th rowspan="2">深度<br>(m)</th>
                                 <th rowspan="2">土壤<br>分類</th>
                                 <th rowspan="2">SPT-N</th>
@@ -227,6 +250,9 @@
                             {% for result in results %}
                             <tr>
                                 <td><strong>{{ result.soil_layer.borehole.borehole_id }}</strong></td>
+                                {% if not method_filter %}
+                                <td><span class="badge bg-secondary">{{ result.analysis_method }}</span></td>
+                                {% endif %}
                                 <td>{{ result.soil_layer.top_depth|floatformat:1 }}-{{ result.soil_layer.bottom_depth|floatformat:1 }}</td>
                                 <td>{{ result.soil_layer.uscs|default:"-" }}</td>
                                 <td>{{ result.soil_layer.spt_n|floatformat:0|default:"-" }}</td>
@@ -287,6 +313,9 @@
                                 <td colspan="20" class="text-center text-muted py-4">
                                     <i class="fas fa-search fa-2x mb-2"></i><br>
                                     沒有找到符合條件的分析結果
+                                    {% if method_filter %}
+                                    <br><small>請檢查是否已執行 {{ method_filter }} 方法的分析</small>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}
@@ -322,4 +351,64 @@
         </div>
     </div>
 </div>
+
+<!-- 新增：方法比較 Modal -->
+<div class="modal fade" id="methodComparisonModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-balance-scale"></i> 分析方法比較</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="method-comparison-content">
+                    <div class="text-center">
+                        <div class="loading"></div>
+                        <p>載入比較資料中...</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function showMethodComparison() {
+    const modal = new bootstrap.Modal(document.getElementById('methodComparisonModal'));
+    const content = document.getElementById('method-comparison-content');
+    
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="loading"></div>
+            <p>載入比較資料中...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    // 這裡可以用 AJAX 載入比較資料
+    setTimeout(() => {
+        content.innerHTML = `
+            <div class="alert alert-info">
+                <i class="fas fa-info-circle"></i>
+                分析方法比較功能開發中，將顯示不同方法的安全係數差異圖表...
+            </div>
+            <div class="row">
+                {% for method_code, method_name in available_methods %}
+                <div class="col-md-3">
+                    <div class="card">
+                        <div class="card-body text-center">
+                            <h6>{{ method_name }}</h6>
+                            <p class="text-muted">比較統計將在此顯示</p>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        `;
+    }, 1000);
+}
+</script>
 {% endblock %}

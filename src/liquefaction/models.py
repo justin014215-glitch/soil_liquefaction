@@ -214,6 +214,18 @@ class AnalysisResult(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     soil_layer = models.OneToOneField(SoilLayer, on_delete=models.CASCADE, related_name='analysis_result', verbose_name="所屬土層")
     
+    # 新增：分析方法欄位
+    analysis_method = models.CharField(
+        max_length=10,
+        choices=[
+            ('HBF', 'HBF (2012)'),
+            ('NCEER', 'NCEER'),
+            ('AIJ', 'AIJ'),
+            ('JRA', 'JRA'),
+        ],
+        verbose_name="分析方法"
+    )
+
     # 計算的基本參數
     soil_depth = models.FloatField(null=True, blank=True, verbose_name="土層深度 (m)")
     mid_depth = models.FloatField(null=True, blank=True, verbose_name="土層中點深度 (m)")
@@ -313,3 +325,13 @@ class AnalysisResult(models.Model):
         if os.path.exists(output_dir):
             import shutil
             shutil.rmtree(output_dir)    
+
+
+class Meta:
+    verbose_name = "分析結果"
+    verbose_name_plural = "分析結果"
+    # 新增：確保同一土層的同一分析方法只有一個結果
+    unique_together = ['soil_layer', 'analysis_method']
+
+def __str__(self):
+    return f"{self.soil_layer} - {self.get_analysis_method_display()}"

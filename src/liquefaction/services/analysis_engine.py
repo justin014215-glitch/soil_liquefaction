@@ -314,12 +314,15 @@ class LiquefactionAnalysisEngine:
         return pd.DataFrame(data_list)
 
     @transaction.atomic
+
     def _save_analysis_results_to_database(self, results_df: pd.DataFrame):
-        """將外部分析方法的結果儲存到資料庫"""
+        """將外部分析方法的結果儲存到資料庫 - 支援多方法"""
         with transaction.atomic():
-            # 清除舊的分析結果
-            AnalysisResult.objects.filter(soil_layer__borehole__project=self.project).delete()
-            
+            # 只清除當前分析方法的舊結果，保留其他方法的結果
+            AnalysisResult.objects.filter(
+                soil_layer__borehole__project=self.project,
+                analysis_method=self.analysis_method  # 新增：只刪除當前方法的結果
+            ).delete()
             for _, row in results_df.iterrows():
                 try:
                     # 找到對應的土層
@@ -349,6 +352,7 @@ class LiquefactionAnalysisEngine:
                     # 創建分析結果
                     AnalysisResult.objects.create(
                         soil_layer=soil_layer,
+                        analysis_method=self.analysis_method,
                         soil_depth=safe_float(row.get('土層深度')),
                         mid_depth=safe_float(row.get('土層中點深度')),
                         analysis_depth=safe_float(row.get('分析點深度')),
