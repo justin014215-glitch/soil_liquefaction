@@ -21,15 +21,14 @@
                 <a href="{% url 'liquefaction:project_update' project.pk %}" class="btn btn-outline-secondary">
                     <i class="fas fa-edit"></i> 編輯
                 </a>
-                {% if analysis_methods_stats %}
-                    {% for method_code, stats in analysis_methods_stats.items %}
-                        {% if stats.count > 0 %}
-                            <a href="{% url 'liquefaction:results' project.pk %}?method={{ method_code }}" class="btn btn-success">
-                                <i class="fas fa-chart-line"></i> 查看結果
-                            </a>
-                            {% break %}
-                        {% endif %}
-                    {% endfor %}
+                {% if project.status == 'completed' %}
+                <a href="{% url 'liquefaction:results' project.pk %}" class="btn btn-success">
+                    <i class="fas fa-chart-line"></i> 查看結果
+                </a>
+                {% elif project.status == 'pending' and boreholes %}
+                <a href="{% url 'liquefaction:analyze' project.pk %}" class="btn btn-analyze">
+                    <i class="fas fa-play"></i> 開始分析
+                </a>
                 {% endif %}
             </div>
         </div>
@@ -50,7 +49,7 @@
                             <dt class="col-sm-4">專案名稱:</dt>
                             <dd class="col-sm-8">{{ project.name }}</dd>
                             
-                            <dt class="col-sm-4">預設方法:</dt>
+                            <dt class="col-sm-4">分析方法:</dt>
                             <dd class="col-sm-8">
                                 <span class="badge bg-secondary">{{ project.get_analysis_method_display }}</span>
                             </dd>
@@ -129,46 +128,8 @@
     </div>
 </div>
 
-<!-- 新增：分析方法狀態 -->
+<!-- 新增：簡化的多方法分析區域 -->
 {% if boreholes and total_layers > 0 %}
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-calculator"></i> 分析方法狀態</h5>
-            </div>
-            <div class="card-body">
-                <div class="row">
-                    {% for method_code, stats in analysis_methods_stats.items %}
-                    <div class="col-md-3 mb-3">
-                        <div class="card h-100 {% if stats.count > 0 %}border-success{% endif %}">
-                            <div class="card-body text-center">
-                                <h6 class="card-title">{{ stats.name }}</h6>
-                                <div class="mb-2">
-                                    <div class="progress" style="height: 10px;">
-                                        <div class="progress-bar {% if stats.count > 0 %}bg-success{% else %}bg-secondary{% endif %}" 
-                                             role="progressbar" 
-                                             style="width: {{ stats.progress }}%">
-                                        </div>
-                                    </div>
-                                </div>
-                                <small class="text-muted">{{ stats.count }}/{{ total_layers }} 土層</small>
-                                {% if stats.count > 0 %}
-                                <br><small class="text-success"><i class="fas fa-check"></i> 已完成</small>
-                                {% else %}
-                                <br><small class="text-muted">未執行</small>
-                                {% endif %}
-                            </div>
-                        </div>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<!-- 新增：快速分析區域 -->
 <div class="row mb-4">
     <div class="col-12">
         <div class="card">
@@ -176,29 +137,53 @@
                 <h5 class="card-title mb-0"><i class="fas fa-play"></i> 執行分析</h5>
             </div>
             <div class="card-body">
+                <p class="mb-3">選擇要執行的分析方法：</p>
+                
                 <form method="post" id="quickAnalysisForm">
                     {% csrf_token %}
                     <div class="row">
                         <div class="col-md-8">
-                            <h6>選擇分析方法：</h6>
                             <div class="row">
-                                {% for method_code, method_name in available_methods %}
                                 <div class="col-md-6 mb-2">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="{{ method_code }}" 
-                                               id="method_{{ method_code }}">
-                                        <label class="form-check-label" for="method_{{ method_code }}">
-                                            {{ method_name }}
-                                            {% get_method_stats analysis_methods_stats method_code as method_stats %}
-                                            {% if method_stats.count > 0 %}
-                                            <small class="text-success">(<i class="fas fa-check"></i> 已完成)</small>
-                                            {% endif %}
+                                               name="analysis_methods" value="HBF" 
+                                               id="method_HBF">
+                                        <label class="form-check-label" for="method_HBF">
+                                            HBF (2012)
                                         </label>
                                     </div>
                                 </div>
-                                {% endfor %}
-                                <!-- 全部方法選項 -->
+                                <div class="col-md-6 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="analysis_methods" value="NCEER" 
+                                               id="method_NCEER">
+                                        <label class="form-check-label" for="method_NCEER">
+                                            NCEER
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="analysis_methods" value="AIJ" 
+                                               id="method_AIJ">
+                                        <label class="form-check-label" for="method_AIJ">
+                                            AIJ
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="analysis_methods" value="JRA" 
+                                               id="method_JRA">
+                                        <label class="form-check-label" for="method_JRA">
+                                            JRA
+                                        </label>
+                                    </div>
+                                </div>
                                 <div class="col-md-12 mt-2">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 
@@ -212,25 +197,9 @@
                         </div>
                         <div class="col-md-4 d-flex align-items-center">
                             <div class="w-100">
-                                <div class="alert alert-info mb-3">
-                                    <small>
-                                        <i class="fas fa-info-circle"></i>
-                                        可以選擇多個方法同時執行分析
-                                    </small>
-                                </div>
-                                <button type="submit" class="btn btn-analyze btn-lg w-100" onclick="return validateSelection()">
+                                <button type="submit" class="btn btn-primary btn-lg w-100" onclick="return validateSelection()">
                                     <i class="fas fa-play"></i> 開始分析
                                 </button>
-                                {% if analysis_methods_stats %}
-                                    {% for method_code, stats in analysis_methods_stats.items %}
-                                        {% if stats.count > 0 %}
-                                        <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning w-100 mt-2">
-                                            <i class="fas fa-redo"></i> 重新分析
-                                        </a>
-                                        {% break %}
-                                        {% endif %}
-                                    {% endfor %}
-                                {% endif %}
                             </div>
                         </div>
                     </div>
@@ -274,146 +243,59 @@
 </div>
 {% endif %}
 
-<!-- 鑽孔資料列表 -->
+<!-- 鑽孔資料列表 - 簡化版 -->
 {% if boreholes %}
 <div class="row">
     <div class="col-12">
         <div class="card">
-            <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="card-header">
                 <h5 class="card-title mb-0"><i class="fas fa-list"></i> 鑽孔資料</h5>
-                <div class="btn-group btn-group-sm" role="group">
-                    <button type="button" class="btn btn-outline-secondary active" onclick="toggleView('table')">
-                        <i class="fas fa-table"></i> 表格檢視
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" onclick="toggleView('cards')">
-                        <i class="fas fa-th"></i> 卡片檢視
-                    </button>
-                </div>
             </div>
             <div class="card-body">
-                <!-- 表格檢視 -->
-                <div id="table-view">
-                    <div class="table-responsive">
-                        <table class="table table-hover">
-                            <thead>
-                                <tr>
-                                    <th>鑽孔編號</th>
-                                    <th>座標 (TWD97)</th>
-                                    <th>地表高程</th>
-                                    <th>地下水位</th>
-                                    <th>土層數量</th>
-                                    <th>最大深度</th>
-                                    <th>行政區域</th>
-                                    <th>操作</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for borehole_stats in boreholes_with_stats %}
-                                {% with borehole_stats.borehole as borehole %}
-                                <tr>
-                                    <td><strong>{{ borehole.borehole_id }}</strong></td>
-                                    <td>
-                                        <small>
-                                            X: {{ borehole.twd97_x|floatformat:2 }}<br>
-                                            Y: {{ borehole.twd97_y|floatformat:2 }}
-                                        </small>
-                                    </td>
-                                    <td>
-                                        {% if borehole.surface_elevation %}
-                                            {{ borehole.surface_elevation|floatformat:2 }}m
-                                        {% else %}
-                                            <span class="text-muted">未知</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>{{ borehole.water_depth|floatformat:2 }}m</td>
-                                    <td>{{ borehole_stats.layers_count }}</td>
-                                    <td>
-                                        {% if borehole_stats.max_depth > 0 %}
-                                            {{ borehole_stats.max_depth|floatformat:2 }}m
-                                        {% else %}
-                                            <span class="text-muted">-</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <small>
-                                            {% if borehole.city %}{{ borehole.city }}{% endif %}
-                                            {% if borehole.district %}{{ borehole.district }}{% endif %}
-                                            {% if borehole.village %}{{ borehole.village }}{% endif %}
-                                        </small>
-                                    </td>
-                                    <td>
-                                        <button type="button" class="btn btn-sm btn-outline-primary" 
-                                                onclick="showBoreholeDetail('{{ borehole.borehole_id }}')">
-                                            <i class="fas fa-eye"></i> 詳情
-                                        </button>
-                                    </td>
-                                </tr>
-                                {% endwith %}
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-                
-                <!-- 卡片檢視 -->
-                <div id="cards-view" style="display: none;">
-                    <div class="row">
-                        {% for borehole in boreholes %}
-                        <div class="col-md-6 col-lg-4 mb-3">
-                            <div class="card h-100">
-                                <div class="card-header">
-                                    <h6 class="card-title mb-0">{{ borehole.borehole_id }}</h6>
-                                </div>
-                                <div class="card-body">
-                                    <p class="card-text">
-                                        <small>
-                                            <strong>座標:</strong> {{ borehole.twd97_x|floatformat:2 }}, {{ borehole.twd97_y|floatformat:2 }}<br>
-                                            <strong>土層數:</strong> {{ borehole.soil_layers.count }}<br>
-                                            <strong>地下水位:</strong> {{ borehole.water_depth|floatformat:2 }}m
-                                        </small>
-                                    </p>
-                                </div>
-                                <div class="card-footer">
-                                    <button type="button" class="btn btn-sm btn-outline-primary w-100" 
-                                            onclick="showBoreholeDetail('{{ borehole.borehole_id }}')">
-                                        <i class="fas fa-eye"></i> 查看詳情
-                                    </button>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>鑽孔編號</th>
+                                <th>座標 (TWD97)</th>
+                                <th>地下水位</th>
+                                <th>土層數量</th>
+                                <th>行政區域</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for borehole in boreholes %}
+                            <tr>
+                                <td><strong>{{ borehole.borehole_id }}</strong></td>
+                                <td>
+                                    <small>
+                                        X: {{ borehole.twd97_x|floatformat:2 }}<br>
+                                        Y: {{ borehole.twd97_y|floatformat:2 }}
+                                    </small>
+                                </td>
+                                <td>{{ borehole.water_depth|floatformat:2 }}m</td>
+                                <td>{{ borehole.soil_layers.count }}</td>
+                                <td>
+                                    <small>
+                                        {% if borehole.city %}{{ borehole.city }}{% endif %}
+                                        {% if borehole.district %}{{ borehole.district }}{% endif %}
+                                    </small>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
 </div>
 {% endif %}
-
-<!-- 鑽孔詳情 Modal -->
-<div class="modal fade" id="boreholeDetailModal" tabindex="-1">
-    <div class="modal-dialog modal-lg">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-info-circle"></i> 鑽孔詳情</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body">
-                <div id="borehole-detail-content">
-                    <div class="text-center">
-                        <div class="loading"></div>
-                        <p>載入中...</p>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-// 新增：全部方法選擇功能
+// 全部方法選擇功能
 function toggleAllMethods() {
     const allCheckbox = document.getElementById('all_methods');
     const methodCheckboxes = document.querySelectorAll('input[name="analysis_methods"]');
@@ -423,7 +305,7 @@ function toggleAllMethods() {
     });
 }
 
-// 新增：驗證選擇功能
+// 驗證選擇功能
 function validateSelection() {
     const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
     if (selectedMethods.length === 0) {
@@ -436,47 +318,6 @@ function validateSelection() {
     );
     
     return confirm(`確定要執行以下分析方法嗎？\n\n${methodNames.join('\n')}\n\n分析可能需要數分鐘時間。`);
-}
-
-function toggleView(viewType) {
-    const tableView = document.getElementById('table-view');
-    const cardsView = document.getElementById('cards-view');
-    const buttons = document.querySelectorAll('[onclick^="toggleView"]');
-    
-    buttons.forEach(btn => btn.classList.remove('active'));
-    
-    if (viewType === 'table') {
-        tableView.style.display = 'block';
-        cardsView.style.display = 'none';
-        event.target.classList.add('active');
-    } else {
-        tableView.style.display = 'none';
-        cardsView.style.display = 'block';
-        event.target.classList.add('active');
-    }
-}
-
-function showBoreholeDetail(boreholeId) {
-    const modal = new bootstrap.Modal(document.getElementById('boreholeDetailModal'));
-    const content = document.getElementById('borehole-detail-content');
-    
-    content.innerHTML = `
-        <div class="text-center">
-            <div class="loading"></div>
-            <p>載入中...</p>
-        </div>
-    `;
-    
-    modal.show();
-    
-    setTimeout(() => {
-        content.innerHTML = `
-            <div class="alert alert-info">
-                <i class="fas fa-info-circle"></i>
-                鑽孔 <strong>${boreholeId}</strong> 的詳細資料載入功能開發中...
-            </div>
-        `;
-    }, 1000);
 }
 </script>
 {% endblock %}

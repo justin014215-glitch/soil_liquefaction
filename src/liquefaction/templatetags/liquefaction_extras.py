@@ -1,7 +1,3 @@
-# 創建文件：src/liquefaction/templatetags/__init__.py
-# 空文件
-
-# 創建文件：src/liquefaction/templatetags/liquefaction_extras.py
 from django import template
 
 register = template.Library()

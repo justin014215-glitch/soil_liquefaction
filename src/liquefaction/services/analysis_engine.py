@@ -10,6 +10,9 @@ from ..models import AnalysisProject, BoreholeData, SoilLayer, AnalysisResult
 import os
 from django.conf import settings
 from datetime import datetime
+# 修改 src/liquefaction/services/analysis_engine.py 中的 _save_analysis_results_to_database 方法
+
+from django.db import transaction, IntegrityError
 print("=== 開始載入 analysis_engine.py ===")
 
 logger = logging.getLogger(__name__)
@@ -313,16 +316,39 @@ class LiquefactionAnalysisEngine:
         
         return pd.DataFrame(data_list)
 
-    @transaction.atomic
 
+
+    @transaction.atomic
     def _save_analysis_results_to_database(self, results_df: pd.DataFrame):
-        """將外部分析方法的結果儲存到資料庫 - 支援多方法"""
-        with transaction.atomic():
-            # 只清除當前分析方法的舊結果，保留其他方法的結果
+        """將外部分析方法的結果儲存到資料庫 - 支援多方法並修復事務錯誤"""
+        
+        try:
+            # 先清除當前分析方法的舊結果，保留其他方法的結果
+            deleted_count = AnalysisResult.objects.filter(
+                soil_layer__borehole__project=self.project,
+                analysis_method=self.analysis_method
+            ).count()
+            
             AnalysisResult.objects.filter(
                 soil_layer__borehole__project=self.project,
-                analysis_method=self.analysis_method  # 新增：只刪除當前方法的結果
+                analysis_method=self.analysis_method
             ).delete()
+            
+            print(f"已清除 {self.analysis_method} 方法的 {deleted_count} 個舊結果")
+            
+            # 安全地獲取數值的輔助函數
+            def safe_float(val):
+                if pd.isna(val) or val == '-' or val == '':
+                    return None
+                try:
+                    return float(val)
+                except (ValueError, TypeError):
+                    return None
+            
+            # 批次處理插入，收集要創建的對象
+            results_to_create = []
+            skipped_count = 0
+            
             for _, row in results_df.iterrows():
                 try:
                     # 找到對應的土層
@@ -338,19 +364,23 @@ class LiquefactionAnalysisEngine:
                     ).first()
                     
                     if not soil_layer:
+                        skipped_count += 1
+                        print(f"⚠️ 找不到對應土層: {row['鑽孔編號']} {row['上限深度(公尺)']}-{row['下限深度(公尺)']}m")
                         continue
                     
-                    # 安全地獲取數值
-                    def safe_float(val):
-                        if pd.isna(val) or val == '-' or val == '':
-                            return None
-                        try:
-                            return float(val)
-                        except (ValueError, TypeError):
-                            return None
+                    # 檢查是否已存在（避免重複）
+                    existing = AnalysisResult.objects.filter(
+                        soil_layer=soil_layer,
+                        analysis_method=self.analysis_method
+                    ).exists()
                     
-                    # 創建分析結果
-                    AnalysisResult.objects.create(
+                    if existing:
+                        print(f"⚠️ 結果已存在，跳過: {soil_layer} {self.analysis_method}")
+                        skipped_count += 1
+                        continue
+                    
+                    # 準備分析結果對象
+                    analysis_result = AnalysisResult(
                         soil_layer=soil_layer,
                         analysis_method=self.analysis_method,
                         soil_depth=safe_float(row.get('土層深度')),
@@ -402,6 +432,45 @@ class LiquefactionAnalysisEngine:
                         lpi_max=safe_float(row.get('LPI_MaxEq'))
                     )
                     
+                    results_to_create.append(analysis_result)
+                    
                 except Exception as e:
-                    logger.error(f"儲存分析結果時發生錯誤: {str(e)}")
+                    skipped_count += 1
+                    logger.error(f"準備分析結果時發生錯誤 ({row.get('鑽孔編號', 'unknown')}): {str(e)}")
                     continue
+            
+            # 批次創建所有結果
+            if results_to_create:
+                try:
+                    created_results = AnalysisResult.objects.bulk_create(
+                        results_to_create,
+                        ignore_conflicts=True  # 忽略衝突，避免重複插入錯誤
+                    )
+                    print(f"✅ 成功儲存 {len(created_results)} 個 {self.analysis_method} 分析結果")
+                    
+                    if skipped_count > 0:
+                        print(f"⚠️ 跳過 {skipped_count} 個記錄")
+                        
+                except IntegrityError as e:
+                    logger.error(f"批次插入時發生完整性錯誤: {str(e)}")
+                    # 如果批次插入失敗，嘗試逐個插入
+                    print("嘗試逐個插入...")
+                    success_count = 0
+                    for result in results_to_create:
+                        try:
+                            result.save()
+                            success_count += 1
+                        except IntegrityError:
+                            # 忽略重複記錄錯誤
+                            pass
+                        except Exception as e:
+                            logger.error(f"逐個插入錯誤: {str(e)}")
+                    
+                    print(f"✅ 逐個插入成功: {success_count} 個記錄")
+            else:
+                print("⚠️ 沒有有效的分析結果可以儲存")
+                
+        except Exception as e:
+            logger.error(f"儲存分析結果到資料庫時發生嚴重錯誤: {str(e)}")
+            # 重新拋出錯誤，讓上層處理
+            raise        

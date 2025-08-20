@@ -34,35 +34,13 @@
                 <div class="alert alert-info">
                     <h6><i class="fas fa-chart-bar"></i> 資料摘要</h6>
                     <ul class="mb-0">
-                        <li>鑽孔數量：{{ boreholes_count }} 個</li>
-                        <li>土層數量：{{ layers_count }} 個</li>
+                        <li>鑽孔數量：{{ boreholes_count|default:0 }} 個</li>
+                        <li>土層數量：{{ layers_count|default:0 }} 個</li>
                         <li>預設方法：{{ project.get_analysis_method_display }}</li>
                         <li>錘擊效率：{{ project.em_value }}%</li>
                     </ul>
                 </div>
 
-                <!-- 現有分析結果 -->
-                {% if existing_results_by_method %}
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h6 class="card-title mb-0"><i class="fas fa-database"></i> 現有分析結果</h6>
-                    </div>
-                    <div class="card-body">
-                        <div class="row">
-                            {% for method_code, method_info in existing_results_by_method.items %}
-                            <div class="col-md-6 mb-2">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <span class="badge bg-success">{{ method_info.name }}</span>
-                                    <small class="text-muted">{{ method_info.count }} 個結果</small>
-                                </div>
-                            </div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                </div>
-                {% endif %}
-
-                <!-- 分析方法選擇 -->
                 <div class="card mb-4">
                     <div class="card-header">
                         <h6 class="card-title mb-0"><i class="fas fa-calculator"></i> 選擇要重新分析的方法</h6>
@@ -71,35 +49,60 @@
                         <form method="post" id="reanalysisForm">
                             {% csrf_token %}
                             <div class="row">
-                                {% for method_code, method_name in available_methods %}
                                 <div class="col-md-6 mb-3">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="{{ method_code }}" 
-                                               id="remethod_{{ method_code }}">
-                                        <label class="form-check-label" for="remethod_{{ method_code }}">
-                                            <strong>{{ method_name }}</strong>
-                                            {% if existing_results_by_method|lookup:method_code %}
-                                            <small class="text-success">
-                                                (<i class="fas fa-check"></i> 已有 {{ existing_results_by_method|lookup:method_code.count }} 個結果)
-                                            </small>
-                                            {% else %}
-                                            <small class="text-muted">(尚未執行)</small>
-                                            {% endif %}
+                                               name="analysis_methods" value="HBF" 
+                                               id="remethod_HBF">
+                                        <label class="form-check-label" for="remethod_HBF">
+                                            <strong>HBF (2012)</strong>
+                                            <small class="text-muted d-block">適用於台灣地區</small>
                                         </label>
                                     </div>
                                 </div>
-                                {% endfor %}
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="analysis_methods" value="NCEER" 
+                                               id="remethod_NCEER">
+                                        <label class="form-check-label" for="remethod_NCEER">
+                                            <strong>NCEER</strong>
+                                            <small class="text-muted d-block">國際標準方法</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="analysis_methods" value="AIJ" 
+                                               id="remethod_AIJ">
+                                        <label class="form-check-label" for="remethod_AIJ">
+                                            <strong>AIJ</strong>
+                                            <small class="text-muted d-block">日本建築學會</small>
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" 
+                                               name="analysis_methods" value="JRA" 
+                                               id="remethod_JRA">
+                                        <label class="form-check-label" for="remethod_JRA">
+                                            <strong>JRA</strong>
+                                            <small class="text-muted d-block">日本道路協會</small>
+                                        </label>
+                                    </div>
+                                </div>
                             </div>
                             
                             <div class="row">
                                 <div class="col-12">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 
-                                               id="reanalyze_all_methods" onchange="toggleAllReanalyzeMethods()">
+                                               id="reanalyze_all_methods">
                                         <label class="form-check-label" for="reanalyze_all_methods">
                                             <strong>全部方法都重新分析</strong>
-                                            <small class="text-warning">- 這將清除所有現有結果</small>
+                                            <small class="text-warning d-block">這將清除所有現有結果</small>
                                         </label>
                                     </div>
                                 </div>
@@ -123,7 +126,7 @@
                     <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
                         <i class="fas fa-arrow-left"></i> 取消
                     </a>
-                    <button type="submit" form="reanalysisForm" class="btn btn-warning btn-lg" onclick="return validateReanalyzeAndSubmit()">
+                    <button type="submit" form="reanalysisForm" class="btn btn-warning btn-lg">
                         <i class="fas fa-redo"></i> 確認重新分析
                     </button>
                 </div>
@@ -134,37 +137,30 @@
     <div class="col-lg-4">
         <div class="card">
             <div class="card-header">
-                <h6 class="card-title mb-0"><i class="fas fa-lightbulb"></i> 何時需要重新分析</h6>
+                <h6 class="card-title mb-0"><i class="fas fa-lightbulb"></i> 使用說明</h6>
             </div>
             <div class="card-body">
                 <h6>建議重新分析的情況：</h6>
                 <ul class="list-unstyled">
-                    <li>• 修改了分析方法偏好</li>
-                    <li>• 調整了錘擊效率參數</li>
+                    <li>• 修改了分析參數</li>
+                    <li>• 調整了錘擊效率</li>
                     <li>• 更新了鑽孔資料</li>
-                    <li>• 改變了斷層資料設定</li>
+                    <li>• 改變了斷層設定</li>
                     <li>• 上次分析出現錯誤</li>
-                    <li>• 想要比較不同方法的結果</li>
+                    <li>• 想要比較不同方法</li>
                 </ul>
 
                 <h6 class="mt-4">選擇性重新分析：</h6>
                 <ul class="list-unstyled">
                     <li>• 可以只重新分析特定方法</li>
                     <li>• 其他方法的結果將保留</li>
-                    <li>• 適用於參數微調或方法比較</li>
+                    <li>• 適用於參數微調</li>
                 </ul>
 
                 <div class="alert alert-info mt-3">
                     <i class="fas fa-info-circle"></i>
-                    <strong>提示：</strong>如果只是想查看不同的分析結果展示，不需要重新分析，可以直接在結果頁面調整顯示選項。
+                    <strong>提示：</strong>如果只是要查看結果，可以直接到結果頁面調整顯示選項。
                 </div>
-
-                {% if existing_results_by_method %}
-                <div class="alert alert-warning mt-3">
-                    <i class="fas fa-database"></i>
-                    <strong>現有結果：</strong>目前已有 {{ existing_results_by_method|length }} 種方法的分析結果，選擇重新分析將會覆蓋對應方法的結果。
-                </div>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -173,80 +169,79 @@
 
 {% block extra_js %}
 <script>
-// 全部方法選擇功能
-function toggleAllReanalyzeMethods() {
+document.addEventListener('DOMContentLoaded', function() {
     const allCheckbox = document.getElementById('reanalyze_all_methods');
     const methodCheckboxes = document.querySelectorAll('input[name="analysis_methods"]');
-    
-    methodCheckboxes.forEach(checkbox => {
-        checkbox.checked = allCheckbox.checked;
-    });
-    
-    updateWarningList();
-}
+    const warningList = document.getElementById('warningList');
+    const form = document.getElementById('reanalysisForm');
 
-// 監聽個別方法checkbox的變化
-document.querySelectorAll('input[name="analysis_methods"]').forEach(checkbox => {
-    checkbox.addEventListener('change', function() {
-        const allCheckbox = document.getElementById('reanalyze_all_methods');
-        const methodCheckboxes = document.querySelectorAll('input[name="analysis_methods"]');
-        const checkedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
-        
-        // 如果所有方法都選中，則勾選"全部方法"
-        if (checkedMethods.length === methodCheckboxes.length) {
-            allCheckbox.checked = true;
-        } else {
-            allCheckbox.checked = false;
-        }
-        
+    // 全部方法選擇功能
+    allCheckbox.addEventListener('change', function() {
+        methodCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+        });
         updateWarningList();
     });
-});
 
-// 更新警告列表
-function updateWarningList() {
-    const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
-    const warningList = document.getElementById('warningList');
-    
-    if (selectedMethods.length > 0) {
+    // 監聽個別方法checkbox的變化
+    methodCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const checkedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
+            
+            if (checkedMethods.length === methodCheckboxes.length) {
+                allCheckbox.checked = true;
+            } else {
+                allCheckbox.checked = false;
+            }
+            
+            updateWarningList();
+        });
+    });
+
+    // 更新警告列表
+    function updateWarningList() {
+        const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
+        
+        if (selectedMethods.length > 0) {
+            const methodNames = Array.from(selectedMethods).map(cb => 
+                cb.parentElement.querySelector('label strong').textContent
+            );
+            
+            warningList.innerHTML = `
+                <li>刪除以下方法的現有分析結果：<strong>${methodNames.join(', ')}</strong></li>
+                <li>重新計算這些方法的所有土層液化參數</li>
+                <li>使用目前的專案設定進行分析</li>
+                <li>分析過程可能需要數分鐘時間</li>
+            `;
+        } else {
+            warningList.innerHTML = `<li>請先選擇要重新分析的方法</li>`;
+        }
+    }
+
+    // 表單提交驗證
+    form.addEventListener('submit', function(e) {
+        const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
+        
+        if (selectedMethods.length === 0) {
+            e.preventDefault();
+            alert('請至少選擇一種要重新分析的方法！');
+            return false;
+        }
+        
         const methodNames = Array.from(selectedMethods).map(cb => 
             cb.parentElement.querySelector('label strong').textContent
         );
         
-        warningList.innerHTML = `
-            <li>刪除以下方法的現有分析結果：<strong>${methodNames.join(', ')}</strong></li>
-            <li>重新計算這些方法的所有土層液化參數</li>
-            <li>使用目前的專案設定進行分析</li>
-            <li>分析過程可能需要數分鐘時間</li>
-        `;
-    } else {
-        warningList.innerHTML = `
-            <li>請先選擇要重新分析的方法</li>
-        `;
-    }
-}
+        const confirmMessage = `確定要重新分析以下方法嗎？\n\n${methodNames.join('\n')}\n\n這將會刪除這些方法的現有結果並重新計算。`;
+        
+        if (!confirm(confirmMessage)) {
+            e.preventDefault();
+            return false;
+        }
+    });
 
-// 驗證選擇並提交
-function validateReanalyzeAndSubmit() {
-    const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
-    
-    if (selectedMethods.length === 0) {
-        alert('請至少選擇一種要重新分析的方法！');
-        return false;
-    }
-    
-    const methodNames = Array.from(selectedMethods).map(cb => 
-        cb.parentElement.querySelector('label strong').textContent
-    );
-    
-    const confirmMessage = `確定要重新分析以下方法嗎？\n\n${methodNames.join('\n')}\n\n這將會刪除這些方法的現有結果，並重新計算。\n\n點擊「確定」繼續，或「取消」返回。`;
-    
-    return confirm(confirmMessage);
-}
-
-// 初始化警告列表
-document.addEventListener('DOMContentLoaded', function() {
+    // 初始化警告列表
     updateWarningList();
 });
 </script>
-{% endblock %}
+{% endblock %>
