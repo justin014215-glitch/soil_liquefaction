@@ -3,163 +3,91 @@
 {% block title %}重新分析 - {{ project.name }}{% endblock %}
 
 {% block content %}
-<div class="row">
-    <div class="col-12">
-        <h2><i class="fas fa-redo"></i> 重新分析</h2>
-        <nav aria-label="breadcrumb">
-            <ol class="breadcrumb">
-                <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
-                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
-                <li class="breadcrumb-item active">重新分析</li>
-            </ol>
-        </nav>
-    </div>
-</div>
-
-<div class="row">
-    <div class="col-lg-8">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-exclamation-triangle text-warning"></i> 重新分析確認</h5>
-            </div>
-            <div class="card-body">
-                <div class="alert alert-warning">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <strong>注意：</strong>重新分析將會覆蓋選中方法的現有分析結果！
-                </div>
-
-                <p>您即將重新分析專案 <strong>{{ project.name }}</strong>。</p>
-                
-                <div class="alert alert-info">
-                    <h6><i class="fas fa-chart-bar"></i> 資料摘要</h6>
-                    <ul class="mb-0">
-                        <li>鑽孔數量：{{ boreholes_count|default:0 }} 個</li>
-                        <li>土層數量：{{ layers_count|default:0 }} 個</li>
-                        <li>預設方法：{{ project.get_analysis_method_display }}</li>
-                        <li>錘擊效率：{{ project.em_value }}%</li>
-                    </ul>
-                </div>
-
-                <div class="card mb-4">
-                    <div class="card-header">
-                        <h6 class="card-title mb-0"><i class="fas fa-calculator"></i> 選擇要重新分析的方法</h6>
-                    </div>
-                    <div class="card-body">
-                        <form method="post" id="reanalysisForm">
-                            {% csrf_token %}
-                            <div class="row">
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="HBF" 
-                                               id="remethod_HBF">
-                                        <label class="form-check-label" for="remethod_HBF">
-                                            <strong>HBF (2012)</strong>
-                                            <small class="text-muted d-block">適用於台灣地區</small>
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="NCEER" 
-                                               id="remethod_NCEER">
-                                        <label class="form-check-label" for="remethod_NCEER">
-                                            <strong>NCEER</strong>
-                                            <small class="text-muted d-block">國際標準方法</small>
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="AIJ" 
-                                               id="remethod_AIJ">
-                                        <label class="form-check-label" for="remethod_AIJ">
-                                            <strong>AIJ</strong>
-                                            <small class="text-muted d-block">日本建築學會</small>
-                                        </label>
-                                    </div>
-                                </div>
-                                <div class="col-md-6 mb-3">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="JRA" 
-                                               id="remethod_JRA">
-                                        <label class="form-check-label" for="remethod_JRA">
-                                            <strong>JRA</strong>
-                                            <small class="text-muted d-block">日本道路協會</small>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                            
-                            <div class="row">
-                                <div class="col-12">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               id="reanalyze_all_methods">
-                                        <label class="form-check-label" for="reanalyze_all_methods">
-                                            <strong>全部方法都重新分析</strong>
-                                            <small class="text-warning d-block">這將清除所有現有結果</small>
-                                        </label>
-                                    </div>
-                                </div>
-                            </div>
-                        </form>
-                    </div>
-                </div>
-                
-                <div class="alert alert-danger">
-                    <i class="fas fa-exclamation-triangle"></i>
-                    <strong>重新分析將會：</strong>
-                    <ul class="mb-0" id="warningList">
-                        <li>刪除選中方法的現有分析結果</li>
-                        <li>重新計算選中方法的所有土層液化參數</li>
-                        <li>使用目前的專案設定進行分析</li>
-                        <li>分析過程可能需要數分鐘時間</li>
-                    </ul>
-                </div>
-                
-                <div class="d-flex justify-content-between">
-                    <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
-                        <i class="fas fa-arrow-left"></i> 取消
-                    </a>
-                    <button type="submit" form="reanalysisForm" class="btn btn-warning btn-lg">
-                        <i class="fas fa-redo"></i> 確認重新分析
-                    </button>
-                </div>
-            </div>
+<div class="container">
+    <div class="row">
+        <div class="col-12">
+            <h2><i class="fas fa-redo"></i> 重新分析</h2>
+            <nav aria-label="breadcrumb">
+                <ol class="breadcrumb">
+                    <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                    <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                    <li class="breadcrumb-item active">重新分析</li>
+                </ol>
+            </nav>
         </div>
     </div>
-    
-    <div class="col-lg-4">
-        <div class="card">
-            <div class="card-header">
-                <h6 class="card-title mb-0"><i class="fas fa-lightbulb"></i> 使用說明</h6>
+
+    <div class="row">
+        <div class="col-12">
+            <div class="alert alert-warning">
+                <i class="fas fa-exclamation-triangle"></i>
+                <strong>注意：</strong>重新分析將會覆蓋選中方法的現有分析結果！
             </div>
-            <div class="card-body">
-                <h6>建議重新分析的情況：</h6>
-                <ul class="list-unstyled">
-                    <li>• 修改了分析參數</li>
-                    <li>• 調整了錘擊效率</li>
-                    <li>• 更新了鑽孔資料</li>
-                    <li>• 改變了斷層設定</li>
-                    <li>• 上次分析出現錯誤</li>
-                    <li>• 想要比較不同方法</li>
-                </ul>
 
-                <h6 class="mt-4">選擇性重新分析：</h6>
-                <ul class="list-unstyled">
-                    <li>• 可以只重新分析特定方法</li>
-                    <li>• 其他方法的結果將保留</li>
-                    <li>• 適用於參數微調</li>
-                </ul>
-
-                <div class="alert alert-info mt-3">
-                    <i class="fas fa-info-circle"></i>
-                    <strong>提示：</strong>如果只是要查看結果，可以直接到結果頁面調整顯示選項。
+            <div class="card">
+                <div class="card-header">
+                    <h5>重新分析 - {{ project.name }}</h5>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+                        
+                        <h6>選擇要重新分析的方法：</h6>
+                        
+                        <div class="row">
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="analysis_methods" value="HBF" id="hbf">
+                                    <label class="form-check-label" for="hbf">
+                                        HBF (2012)
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="analysis_methods" value="NCEER" id="nceer">
+                                    <label class="form-check-label" for="nceer">
+                                        NCEER
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="analysis_methods" value="AIJ" id="aij">
+                                    <label class="form-check-label" for="aij">
+                                        AIJ
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-3">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="analysis_methods" value="JRA" id="jra">
+                                    <label class="form-check-label" for="jra">
+                                        JRA
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-3">
+                            <div class="form-check">
+                                <input class="form-check-input" type="checkbox" id="all_methods">
+                                <label class="form-check-label" for="all_methods">
+                                    <strong>全部方法都重新分析</strong>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="mt-4">
+                            <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> 取消
+                            </a>
+                            <button type="submit" class="btn btn-warning ms-2">
+                                <i class="fas fa-redo"></i> 確認重新分析
+                            </button>
+                        </div>
+                    </form>
                 </div>
             </div>
         </div>
@@ -170,78 +98,32 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    const allCheckbox = document.getElementById('reanalyze_all_methods');
+    const allCheckbox = document.getElementById('all_methods');
     const methodCheckboxes = document.querySelectorAll('input[name="analysis_methods"]');
-    const warningList = document.getElementById('warningList');
-    const form = document.getElementById('reanalysisForm');
+    const form = document.querySelector('form');
 
-    // 全部方法選擇功能
+    // 全選功能
     allCheckbox.addEventListener('change', function() {
         methodCheckboxes.forEach(checkbox => {
             checkbox.checked = this.checked;
         });
-        updateWarningList();
     });
-
-    // 監聽個別方法checkbox的變化
-    methodCheckboxes.forEach(checkbox => {
-        checkbox.addEventListener('change', function() {
-            const checkedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
-            
-            if (checkedMethods.length === methodCheckboxes.length) {
-                allCheckbox.checked = true;
-            } else {
-                allCheckbox.checked = false;
-            }
-            
-            updateWarningList();
-        });
-    });
-
-    // 更新警告列表
-    function updateWarningList() {
-        const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
-        
-        if (selectedMethods.length > 0) {
-            const methodNames = Array.from(selectedMethods).map(cb => 
-                cb.parentElement.querySelector('label strong').textContent
-            );
-            
-            warningList.innerHTML = `
-                <li>刪除以下方法的現有分析結果：<strong>${methodNames.join(', ')}</strong></li>
-                <li>重新計算這些方法的所有土層液化參數</li>
-                <li>使用目前的專案設定進行分析</li>
-                <li>分析過程可能需要數分鐘時間</li>
-            `;
-        } else {
-            warningList.innerHTML = `<li>請先選擇要重新分析的方法</li>`;
-        }
-    }
 
     // 表單提交驗證
     form.addEventListener('submit', function(e) {
-        const selectedMethods = document.querySelectorAll('input[name="analysis_methods"]:checked');
-        
-        if (selectedMethods.length === 0) {
+        const selected = document.querySelectorAll('input[name="analysis_methods"]:checked');
+        if (selected.length === 0) {
             e.preventDefault();
-            alert('請至少選擇一種要重新分析的方法！');
+            alert('請至少選擇一種分析方法！');
             return false;
         }
         
-        const methodNames = Array.from(selectedMethods).map(cb => 
-            cb.parentElement.querySelector('label strong').textContent
-        );
-        
-        const confirmMessage = `確定要重新分析以下方法嗎？\n\n${methodNames.join('\n')}\n\n這將會刪除這些方法的現有結果並重新計算。`;
-        
-        if (!confirm(confirmMessage)) {
+        const methods = Array.from(selected).map(cb => cb.nextElementSibling.textContent.trim());
+        if (!confirm(`確定要重新分析：${methods.join(', ')}？`)) {
             e.preventDefault();
             return false;
         }
     });
-
-    // 初始化警告列表
-    updateWarningList();
 });
 </script>
-{% endblock %>
+{% endblock %}

@@ -21,6 +21,8 @@ def get_default_shapefile_path():
     return 'default_shapefiles/110全臺36條活動斷層數值檔(111年編修)_1110727.shp'
 
 
+
+
 class AnalysisProject(models.Model):
     """分析專案模型"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -33,7 +35,7 @@ class AnalysisProject(models.Model):
     # 上傳的原始檔案
     source_file = models.FileField(upload_to='uploads/csv/', verbose_name="上傳檔案")
     
-    # 分析設定
+    # 分析設定 - 修改為可選，預設為空
     analysis_method = models.CharField(
         max_length=10,
         choices=[
@@ -42,8 +44,10 @@ class AnalysisProject(models.Model):
             ('AIJ', 'AIJ'),
             ('JRA', 'JRA'),
         ],
-        default='HBF',
-        verbose_name="分析方法"
+        blank=True,  # 新增：允許為空
+        null=True,   # 新增：數據庫可為 NULL
+        verbose_name="預設分析方法",
+        help_text="可在分析時選擇其他方法"
     )
     
     # 分析參數
@@ -88,29 +92,17 @@ class AnalysisProject(models.Model):
         ordering = ['-created_at']
     
     def __str__(self):
-        return f"{self.name} ({self.get_analysis_method_display()})"
-    
-    def get_fault_shapefile_path(self):
-        """取得斷層shapefile檔案路徑"""
-        if self.fault_shapefile and self.fault_shapefile.name:
-            return self.fault_shapefile.path
+        if self.analysis_method:
+            return f"{self.name} ({self.get_analysis_method_display()})"
         else:
-            # 使用預設的shapefile
-            default_path = os.path.join(settings.MEDIA_ROOT, get_default_shapefile_path())
-            if os.path.exists(default_path):
-                return default_path
-            else:
-                raise FileNotFoundError(f"預設斷層檔案不存在: {default_path}")
+            return f"{self.name} (未設定方法)"
     
-    def get_fault_shapefile_url(self):
-        """取得斷層shapefile檔案URL"""
-        if self.fault_shapefile and self.fault_shapefile.name:
-            return self.fault_shapefile.url
+    def get_display_method(self):
+        """獲取顯示用的分析方法"""
+        if self.analysis_method:
+            return self.get_analysis_method_display()
         else:
-            # 使用預設的shapefile URL
-            return f"{settings.MEDIA_URL}{get_default_shapefile_path()}"
-
-
+            return "待選擇"
 # 其他模型保持不變...
 class BoreholeData(models.Model):
     """鑽孔資料模型"""

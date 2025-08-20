@@ -523,19 +523,39 @@ def reset_project_status(request, pk):
 
 @login_required
 def results(request, pk):
-    """查看分析結果"""
+    """查看分析結果 - 新增方法篩選"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
-    # 檢查專案狀態
-    if project.status != 'completed':
-        messages.warning(request, '專案尚未完成分析或分析失敗')
+    # 檢查是否有分析結果
+    total_results = AnalysisResult.objects.filter(
+        soil_layer__borehole__project=project
+    ).count()
+    
+    if total_results == 0:
+        messages.warning(request, '專案尚未有分析結果')
         return redirect('liquefaction:project_detail', pk=project.pk)
+    
+    # 獲取可用的分析方法
+    available_methods = AnalysisResult.objects.filter(
+        soil_layer__borehole__project=project
+    ).values_list('analysis_method', flat=True).distinct().order_by('analysis_method')
+    
+    print(f"🔍 可用的分析方法: {list(available_methods)}")
+    
+    # 獲取方法名稱對應
+    method_choices = dict(AnalysisProject._meta.get_field('analysis_method').choices)
+    available_methods_display = [
+        (method, method_choices.get(method, method)) 
+        for method in available_methods
+    ]
+    
+    print(f"🔍 顯示用的方法對應: {available_methods_display}")
     
     # 獲取所有分析結果
     results = AnalysisResult.objects.filter(
         soil_layer__borehole__project=project
     ).select_related('soil_layer', 'soil_layer__borehole').order_by(
-        'soil_layer__borehole__borehole_id', 'soil_layer__top_depth'
+        'soil_layer__borehole__borehole_id', 'soil_layer__top_depth', 'analysis_method'
     )
     
     # 應用篩選條件
@@ -543,22 +563,11 @@ def results(request, pk):
     if borehole_filter:
         results = results.filter(soil_layer__borehole__borehole_id=borehole_filter)
     
-    safety_filter = request.GET.get('safety', '')
-    if safety_filter == 'danger':
-        results = results.filter(fs_design__lt=1.0)
-    elif safety_filter == 'warning':
-        results = results.filter(fs_design__gte=1.0, fs_design__lt=1.3)
-    elif safety_filter == 'safe':
-        results = results.filter(fs_design__gte=1.3)
-    
-    context = {
-        'project': project,
-        'results': results,
-    }
     # 新增：分析方法篩選
     method_filter = request.GET.get('method', '')
     if method_filter:
         results = results.filter(analysis_method=method_filter)
+        print(f"🔍 篩選方法: {method_filter}, 結果數量: {results.count()}")
     
     safety_filter = request.GET.get('safety', '')
     if safety_filter == 'danger':
@@ -568,14 +577,7 @@ def results(request, pk):
     elif safety_filter == 'safe':
         results = results.filter(fs_design__gte=1.3)
     
-    # 獲取可用的分析方法
-    available_methods = AnalysisResult.objects.filter(
-        soil_layer__borehole__project=project
-    ).values_list('analysis_method', flat=True).distinct()
-    
-    # 獲取方法名稱對應
-    method_choices = dict(AnalysisProject._meta.get_field('analysis_method').choices)
-    available_methods_display = [(method, method_choices.get(method, method)) for method in available_methods]
+    print(f"🔍 最終結果數量: {results.count()}")
     
     context = {
         'project': project,
@@ -585,7 +587,6 @@ def results(request, pk):
     }
     
     return render(request, 'liquefaction/results.html', context)
-
 
 
 @login_required
