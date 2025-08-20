@@ -18,13 +18,14 @@ urlpatterns = [
     path('projects/<uuid:pk>/upload/', views.file_upload, name='file_upload'),
     path('projects/<uuid:pk>/analyze/', views.analyze, name='analyze'),
     
+    # 新增：重新分析
+    path('projects/<uuid:pk>/reanalyze/', views.reanalyze, name='reanalyze'),
+     
     # 結果查看
     path('projects/<uuid:pk>/results/', views.results, name='results'),
     path('projects/<uuid:pk>/export/', views.export_results, name='export'),
     
     # API 端點
-    path('api/seismic-data/', views.api_seismic_data, name='api_seismic_data'),
-
-    
+    path('api/seismic-data/', views.api_seismic_data, name='api_seismic_data'),    
     path('projects/', views.project_list, name='project_list'),
 ]

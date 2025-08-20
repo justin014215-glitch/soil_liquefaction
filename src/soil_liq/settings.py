@@ -15,6 +15,18 @@ import os
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+# 添加分析結果輸出目錄設定
+ANALYSIS_OUTPUT_ROOT = os.path.join(BASE_DIR, 'analysis_outputs')
+
+# 確保目錄存在
+os.makedirs(ANALYSIS_OUTPUT_ROOT, exist_ok=True)
+
+# 媒體文件設定（如果還沒有的話）
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+MEDIA_URL = '/media/'
+
+# 添加分析結果的 URL 配置
+ANALYSIS_OUTPUT_URL = '/analysis-outputs/'
 
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
@@ -134,3 +146,24 @@ DATA_UPLOAD_MAX_MEMORY_SIZE = 52428800  # 50MB
 # 預設Shapefile設定
 DEFAULT_SHAPEFILE_NAME = '110全臺36條活動斷層數值檔(111年編修)_1110727.shp'
 DEFAULT_SHAPEFILE_PATH = os.path.join(MEDIA_ROOT, 'default_shapefiles', DEFAULT_SHAPEFILE_NAME)
+
+
+# 媒體檔案設定
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# 液化分析結果目錄
+LIQUEFACTION_RESULTS_DIR = os.path.join(MEDIA_ROOT, 'liquefaction_results')
+
+# 檔案上傳限制
+FILE_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024  # 50MB
+DATA_UPLOAD_MAX_MEMORY_SIZE = 50 * 1024 * 1024
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+
+# 確保目錄存在
+os.makedirs(LIQUEFACTION_RESULTS_DIR, exist_ok=True)
+os.makedirs(MEDIA_ROOT, exist_ok=True)
+
+# 如果使用 Nginx，添加以下設定
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_TZ = True

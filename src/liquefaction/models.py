@@ -4,7 +4,7 @@ from django.core.validators import MinValueValidator, MaxValueValidator
 from django.conf import settings
 import uuid
 import os
-
+from datetime import datetime
 
 
 class Project(models.Model):
@@ -279,3 +279,37 @@ class AnalysisResult(models.Model):
     
     def __str__(self):
         return f"{self.soil_layer} - 分析結果"
+    
+    def get_output_directory(self):
+        """獲取專案輸出目錄"""
+        from django.conf import settings
+        safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        dir_name = f"{self.id}_{safe_name}_{self.analysis_method}"
+        return os.path.join(settings.ANALYSIS_OUTPUT_ROOT, dir_name)
+    
+    def list_output_files(self):
+        """列出專案的所有輸出檔案"""
+        output_dir = self.get_output_directory()
+        if not os.path.exists(output_dir):
+            return []
+        
+        files = []
+        for filename in os.listdir(output_dir):
+            if filename.startswith(str(self.id)):
+                file_path = os.path.join(output_dir, filename)
+                file_info = {
+                    'name': filename,
+                    'path': file_path,
+                    'size': os.path.getsize(file_path),
+                    'modified': datetime.fromtimestamp(os.path.getmtime(file_path))
+                }
+                files.append(file_info)
+        
+        return sorted(files, key=lambda x: x['modified'], reverse=True)
+    
+    def cleanup_output_files(self):
+        """清理專案的輸出檔案"""
+        output_dir = self.get_output_directory()
+        if os.path.exists(output_dir):
+            import shutil
+            shutil.rmtree(output_dir)    

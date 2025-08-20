@@ -28,6 +28,11 @@
                 <a href="{% url 'liquefaction:analyze' project.pk %}" class="btn btn-analyze">
                     <i class="fas fa-play"></i> 開始分析
                 </a>
+                {% elif project.status == 'error' and boreholes %}
+                <!-- 錯誤狀態下也可以重新分析 -->
+                <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
+                    <i class="fas fa-redo"></i> 重新分析
+                </a>
                 {% endif %}
             </div>
         </div>

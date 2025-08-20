@@ -57,6 +57,10 @@
                 <a href="{% url 'liquefaction:export' project.pk %}" class="btn btn-success">
                     <i class="fas fa-download"></i> 匯出結果
                 </a>
+                <!-- 新增重新分析按鈕 -->
+                <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
+                    <i class="fas fa-redo"></i> 重新分析
+                </a>
                 <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-outline-secondary">
                     <i class="fas fa-arrow-left"></i> 返回專案
                 </a>

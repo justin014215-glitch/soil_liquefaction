@@ -1,0 +1,102 @@
+{% extends 'base.html' %}
+
+{% block title %}重新分析 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2><i class="fas fa-redo"></i> 重新分析</h2>
+        <nav aria-label="breadcrumb">
+            <ol class="breadcrumb">
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                <li class="breadcrumb-item active">重新分析</li>
+            </ol>
+        </nav>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-exclamation-triangle text-warning"></i> 重新分析確認</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-warning">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>注意：</strong>重新分析將會覆蓋現有的所有分析結果！
+                </div>
+
+                <p>您即將重新分析專案 <strong>{{ project.name }}</strong>。</p>
+                
+                <div class="alert alert-info">
+                    <h6><i class="fas fa-chart-bar"></i> 資料摘要</h6>
+                    <ul class="mb-0">
+                        <li>鑽孔數量：{{ boreholes_count }} 個</li>
+                        <li>土層數量：{{ layers_count }} 個</li>
+                        <li>現有分析結果：{{ existing_results_count }} 個</li>
+                        <li>分析方法：{{ project.get_analysis_method_display }}</li>
+                        <li>錘擊效率：{{ project.em_value }}%</li>
+                    </ul>
+                </div>
+                
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <strong>重新分析將會：</strong>
+                    <ul class="mb-0">
+                        <li>刪除所有現有的分析結果（{{ existing_results_count }} 個）</li>
+                        <li>重新計算所有土層的液化參數</li>
+                        <li>使用目前的專案設定進行分析</li>
+                        <li>分析過程可能需要數分鐘時間</li>
+                    </ul>
+                </div>
+                
+                <form method="post">
+                    {% csrf_token %}
+                    <div class="d-flex justify-content-between">
+                        <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> 取消
+                        </a>
+                        <button type="submit" class="btn btn-warning btn-lg" onclick="return confirmReanalyze()">
+                            <i class="fas fa-redo"></i> 確認重新分析
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card">
+            <div class="card-header">
+                <h6 class="card-title mb-0"><i class="fas fa-lightbulb"></i> 何時需要重新分析</h6>
+            </div>
+            <div class="card-body">
+                <h6>建議重新分析的情況：</h6>
+                <ul class="list-unstyled">
+                    <li>• 修改了分析方法</li>
+                    <li>• 調整了錘擊效率參數</li>
+                    <li>• 更新了鑽孔資料</li>
+                    <li>• 改變了斷層資料設定</li>
+                    <li>• 上次分析出現錯誤</li>
+                </ul>
+
+                <div class="alert alert-info mt-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>提示：</strong>如果只是想查看不同的分析結果展示，不需要重新分析，可以直接在結果頁面調整顯示選項。
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function confirmReanalyze() {
+    return confirm('確定要重新分析嗎？這將會刪除所有現有的分析結果。\n\n點擊「確定」繼續，或「取消」返回。');
+}
+</script>
+{% endblock %}

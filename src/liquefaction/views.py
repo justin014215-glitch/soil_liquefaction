@@ -8,7 +8,8 @@ from django.utils import timezone
 import json
 import os
 from .models import AnalysisProject, BoreholeData, SoilLayer, AnalysisResult, Project
-
+from django.http import FileResponse, Http404
+from django.contrib.auth.decorators import login_required
 
 def project_list(request):
     projects = Project.objects.all().order_by('-created_at')
@@ -317,6 +318,8 @@ def file_upload(request, pk):
     
     return redirect('liquefaction:project_detail', pk=project.pk)
 
+# views.py 修復專案狀態卡住的問題
+
 @login_required
 def analyze(request, pk):
     """執行液化分析"""
@@ -326,11 +329,25 @@ def analyze(request, pk):
         try:
             print(f"=== 開始分析專案 {project.name} ===")
             print(f"分析方法: {project.analysis_method}")
+            print(f"當前專案狀態: {project.status}")
             
-            # 檢查專案狀態
+            # 檢查專案狀態 - 智能處理 processing 狀態
             if project.status == 'processing':
-                messages.warning(request, '專案正在分析中，請稍候...')
-                return redirect('liquefaction:project_detail', pk=project.pk)
+                # 檢查更新時間，如果超過10分鐘沒更新，認為分析已中斷
+                from django.utils import timezone
+                import datetime
+                
+                time_diff = timezone.now() - project.updated_at
+                if time_diff > datetime.timedelta(minutes=10):
+                    print(f"⚠️ 專案處理超時 ({time_diff})，重置狀態")
+                    project.status = 'pending'
+                    project.error_message = ''
+                    project.save()
+                    messages.warning(request, '檢測到之前的分析可能中斷，已重置狀態。')
+                else:
+                    print(f"⚠️ 專案正在處理中，等待時間: {time_diff}")
+                    messages.warning(request, f'專案正在分析中，已執行 {time_diff}，請稍候...')
+                    return redirect('liquefaction:project_detail', pk=project.pk)
             
             # 檢查是否有鑽孔資料
             boreholes_count = BoreholeData.objects.filter(project=project).count()
@@ -343,7 +360,7 @@ def analyze(request, pk):
             if layers_count == 0:
                 messages.error(request, '專案中沒有土層資料')
                 return redirect('liquefaction:project_detail', pk=project.pk)
-                        
+            
             print("正在載入分析引擎...")
             # 執行液化分析
             from .services.analysis_engine import LiquefactionAnalysisEngine
@@ -355,13 +372,6 @@ def analyze(request, pk):
             analysis_result = analysis_engine.run_analysis()
             
             print(f"分析結果: {analysis_result}")
-            
-            
-            # 執行液化分析
-            from .services.analysis_engine import LiquefactionAnalysisEngine
-            
-            analysis_engine = LiquefactionAnalysisEngine(project)
-            analysis_result = analysis_engine.run_analysis()
             
             if analysis_result['success']:
                 messages.success(
@@ -400,7 +410,26 @@ def analyze(request, pk):
     }
     
     return render(request, 'liquefaction/analyze.html', context)
+
+
+# 添加一個新的 view 用於重置專案狀態
 @login_required
+def reset_project_status(request, pk):
+    """重置專案狀態"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    if request.method == 'POST':
+        old_status = project.status
+        project.status = 'pending'
+        project.error_message = ''
+        project.save()
+        
+        messages.success(request, f'專案狀態已從 "{project.get_status_display()}" 重置為 "等待分析"')
+        print(f"專案 {project.name} 狀態已從 {old_status} 重置為 pending")
+        
+    return redirect('liquefaction:project_detail', pk=project.pk)
+
+
 @login_required
 def results(request, pk):
     """查看分析結果"""
@@ -536,3 +565,132 @@ def api_seismic_data(request):
         'seismic_data': {},
         'message': 'API 開發中'
     })
+
+@login_required
+def reanalyze(request, pk):
+    """重新執行液化分析"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    if request.method == 'POST':
+        try:
+            print(f"=== 開始重新分析專案 {project.name} ===")
+            
+            # 檢查專案狀態
+            if project.status == 'processing':
+                messages.warning(request, '專案正在分析中，請稍候...')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 檢查是否有鑽孔資料
+            boreholes_count = BoreholeData.objects.filter(project=project).count()
+            if boreholes_count == 0:
+                messages.error(request, '專案中沒有鑽孔資料，無法進行分析')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 檢查是否有土層資料
+            layers_count = SoilLayer.objects.filter(borehole__project=project).count()
+            if layers_count == 0:
+                messages.error(request, '專案中沒有土層資料，無法進行分析')
+                return redirect('liquefaction:project_detail', pk=project.pk)
+            
+            # 清除現有的分析結果
+            print("正在清除現有分析結果...")
+            deleted_count = AnalysisResult.objects.filter(
+                soil_layer__borehole__project=project
+            ).count()
+            
+            AnalysisResult.objects.filter(
+                soil_layer__borehole__project=project
+            ).delete()
+            
+            print(f"已清除 {deleted_count} 個現有分析結果")
+            
+            # ====== 重要修改：不要在這裡設定狀態為 processing ======
+            # 移除以下兩行：
+            # project.status = 'processing'
+            # project.save()
+            
+            # 重設錯誤訊息，但不改變狀態，讓 analysis_engine 自己管理
+            project.error_message = ''
+            project.save()
+            
+            print("正在載入分析引擎...")
+            # 執行液化分析
+            from .services.analysis_engine import LiquefactionAnalysisEngine
+            
+            print("創建分析引擎實例...")
+            analysis_engine = LiquefactionAnalysisEngine(project)
+            
+            print("執行重新分析...")
+            analysis_result = analysis_engine.run_analysis()
+            
+            print(f"重新分析結果: {analysis_result}")
+            
+            if analysis_result['success']:
+                messages.success(
+                    request, 
+                    f'重新分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層，'
+                    f'使用 {analysis_result["analysis_method"]} 方法。'
+                )
+                
+                # 顯示警告訊息
+                for warning in analysis_result.get('warnings', []):
+                    messages.warning(request, f'警告：{warning}')
+                
+                return redirect('liquefaction:results', pk=project.pk)
+            else:
+                messages.error(request, f'重新分析失敗：{analysis_result["error"]}')
+                
+                # 顯示詳細錯誤
+                for error in analysis_result.get('errors', []):
+                    messages.error(request, f'錯誤：{error}')
+                
+                return redirect('liquefaction:project_detail', pk=project.pk)
+                
+        except Exception as e:
+            messages.error(request, f'重新分析過程中發生錯誤：{str(e)}')
+            project.status = 'error'
+            project.error_message = str(e)
+            project.save()
+            
+            return redirect('liquefaction:project_detail', pk=project.pk)
+    
+    # GET 請求，顯示重新分析確認頁面
+    context = {
+        'project': project,
+        'boreholes_count': BoreholeData.objects.filter(project=project).count(),
+        'layers_count': SoilLayer.objects.filter(borehole__project=project).count(),
+        'existing_results_count': AnalysisResult.objects.filter(
+            soil_layer__borehole__project=project
+        ).count(),
+    }
+    
+    return render(request, 'liquefaction/reanalyze.html', context)
+
+@login_required
+def download_analysis_file(request, pk, filename):
+    """下載分析結果檔案"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    file_path = os.path.join(project.get_output_directory(), filename)
+    
+    if not os.path.exists(file_path) or not filename.startswith(str(project.id)):
+        raise Http404("檔案不存在")
+    
+    return FileResponse(
+        open(file_path, 'rb'),
+        as_attachment=True,
+        filename=filename
+    )
+
+@login_required
+def project_files(request, pk):
+    """查看專案檔案列表"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    files = project.list_output_files()
+    
+    context = {
+        'project': project,
+        'files': files,
+    }
+    
+    return render(request, 'liquefaction/project_files.html', context)

@@ -20,7 +20,7 @@ from pyproj import Transformer
 from geopy.geocoders import Nominatim
 from geopy.distance import geodesic
 from decimal import Decimal, ROUND_HALF_UP
-from report import generate_all_wells_excel_reports, generate_all_wells_charts
+from .report import generate_all_wells_excel_reports, generate_all_wells_charts
 import tkinter as tk
 from tkinter import filedialog
 from datetime import datetime
@@ -88,8 +88,14 @@ def get_input_file(input_file_path=None, show_gui=True):
     return file_path
 
 # 新增：取得統體單位重單位選擇
-def get_unit_weight_unit():
+def get_unit_weight_unit(show_gui=True):
     """取得使用者選擇的統體單位重單位"""
+    if not show_gui:
+        # Web環境：使用預設值，不跳出GUI
+        print("Web環境：使用預設單位 t/m³")
+        return "t/m3", 1.0
+    
+    # GUI環境：原有的互動邏輯
     print("\n=== 統體單位重單位設定 ===")
     print("請選擇您的資料中統體單位重/統體密度的單位：")
     print("1. t/m³ (公噸/立方公尺)")
@@ -112,7 +118,6 @@ def get_unit_weight_unit():
         except Exception as e:
             print(f"❌ 輸入錯誤：{e}")
             continue
-
 # 支援的座標系統清單
 AVAILABLE_CRS = {
     "1": {"name": "TWD97 台灣本島", "epsg": "EPSG:3826"},
@@ -1842,7 +1847,7 @@ class NCEER:
         lpi_value = max(0, 1 - fs_numeric) * Wi * thickness
         
         return format_result(lpi_value)
-    def generate_simplified_report(self, final_df: pd.DataFrame, output_dir: str = None, 
+    def generate_simplified_report(self, final_df: pd.DataFrame, output_dir: str = None, project_id: Optional[str] = None,  
                               scenario: str = "Design") -> str:
         """生成簡化的液化分析報表"""
         print(f"\n正在生成簡化報表（{scenario} ）...")
@@ -2055,7 +2060,8 @@ class NCEER:
         if output_dir is None:
             output_dir = ""
         current_date = datetime.now().strftime("%m%d")
-        simplified_filename = os.path.join(output_dir, f"NCEER_{scenario}_{current_date}.csv")
+        project_prefix = f"{project_id}_" if project_id else ""
+        simplified_filename = os.path.join(output_dir, f"{project_prefix}NCEER_{scenario}_{current_date}.csv")
         
         try:
             simplified_df.to_csv(simplified_filename, index=False, encoding='utf-8-sig')
@@ -2073,7 +2079,7 @@ class NCEER:
             print(f"儲存簡化報表時發生錯誤：{e}")
             return None
     
-    def generate_lpi_summary_report(self, final_df: pd.DataFrame, output_dir: str = None) -> str:
+    def generate_lpi_summary_report(self, final_df: pd.DataFrame, output_dir: str = None, project_id: Optional[str] = None) -> str:
         """生成LPI摘要報表"""
         print(f"\n正在生成LPI摘要報表...")
         
@@ -2160,8 +2166,8 @@ class NCEER:
         current_date = datetime.now().strftime("%m%d")
         if output_dir is None:
             output_dir = ""
-        
-        filename = os.path.join(output_dir, f"LPI_Summary_NCEER_{current_date}.csv")
+        project_prefix = f"{project_id}_" if project_id else ""
+        filename = os.path.join(output_dir, f"{project_prefix}LPI_Summary_NCEER_{current_date}.csv")
         
         try:
             summary_df.to_csv(filename, index=False, encoding='utf-8-sig')
@@ -2179,20 +2185,40 @@ class NCEER:
 
     
     def NCEER_main(self, show_gui: bool = True, input_file_path: Optional[str] = None, 
-         output_file_path: Optional[str] = None, use_fault_data: bool = True,
-         fault_shapefile_path: Optional[str] = None, custom_em: Optional[float] = None):
+         output_file_path: Optional[str] = None, output_dir: Optional[str] = None, use_fault_data: bool = True,
+         fault_shapefile_path: Optional[str] = None, custom_em: Optional[float] = None,
+         unit_weight_unit: Optional[str] = None,
+         project_id: Optional[str] = None):
     
         print("="*80)
         print("開始 NCEER 液化分析...")
         print("="*80)
 
+        # 取得單位重單位設定
+
+        if unit_weight_unit is None:
+            unit_name, conversion_factor = get_unit_weight_unit(show_gui)
+            self.unit_weight_conversion_factor = conversion_factor
+            print(f"單位重轉換係數設定為：{conversion_factor}")
+        else:
+            if unit_weight_unit.lower() == "kn/m3":
+                self.unit_weight_conversion_factor = 1.0/9.81
+                print(f"使用 kN/m³ 單位，轉換係數：{1.0/9.81:.6f}")
+            else:
+                self.unit_weight_conversion_factor = 1.0
+                print(f"使用 t/m³ 單位，無需轉換")
         # 取得 Em 值
         if custom_em is not None:
             self.default_em = custom_em
             print(f"使用指定的 Em 值: {custom_em}")
         else:
-            self.default_em = self.get_user_em_value()
-            print(f"使用 Em 值: {self.default_em}")
+            if show_gui:
+                self.default_em = self.get_user_em_value()
+                print(f"使用 Em 值: {self.default_em}")
+            else:
+                # Web環境：使用預設值
+                self.default_em = 72
+                print(f"Web環境：使用預設 Em 值: 72")
 
         # 1. 取得檔案路徑
         if input_file_path is None and show_gui:
@@ -2217,31 +2243,36 @@ class NCEER:
                     print(f"⚠️ 載入斷層資料失敗：{e}")
                     fault_gdf = None
             else:
-                # 詢問使用者是否要使用斷層資料
-                use_fault = input("是否要使用斷層距離參數？(y/n，預設為 y): ").strip().lower()
-                if use_fault in ['y', 'yes','']:
-                    print("請選擇斷層 shapefile (.shp) 檔案...")
-                    try:
-                        root = tk.Tk()
-                        root.withdraw()
-                        shp_path = filedialog.askopenfilename(
-                            title="選擇斷層 shapefile",
-                            filetypes=[("Shapefile", "*.shp")]
-                        )
-                        root.destroy()
-                        
-                        if shp_path:
-                            fault_gdf = gpd.read_file(shp_path)
-                            print(f"✅ 成功載入斷層資料：{len(fault_gdf)} 個記錄")
-                        else:
-                            print("⚠️ 未選擇斷層檔案，跳過斷層距離參數查詢")
+                if show_gui:
+                    # GUI模式：詢問使用者是否要使用斷層資料
+                    use_fault = input("是否要使用斷層距離參數？(y/n，預設為 y): ").strip().lower()
+                    if use_fault in ['y', 'yes','']:
+                        print("請選擇斷層 shapefile (.shp) 檔案...")
+                        try:
+                            root = tk.Tk()
+                            root.withdraw()
+                            shp_path = filedialog.askopenfilename(
+                                title="選擇斷層 shapefile",
+                                filetypes=[("Shapefile", "*.shp")]
+                            )
+                            root.destroy()
+                            
+                            if shp_path:
+                                fault_gdf = gpd.read_file(shp_path)
+                                print(f"✅ 成功載入斷層資料：{len(fault_gdf)} 個記錄")
+                            else:
+                                print("⚠️ 未選擇斷層檔案，跳過斷層距離參數查詢")
+                                use_fault_data = False
+                        except Exception as e:
+                            print(f"⚠️ 載入斷層資料失敗：{e}")
                             use_fault_data = False
-                    except Exception as e:
-                        print(f"⚠️ 載入斷層資料失敗：{e}")
+                    else:
+                        print("跳過斷層距離參數查詢")
                         use_fault_data = False
                 else:
-                    print("跳過斷層距離參數查詢")
-                    use_fault_data = False
+                    # Web環境：使用系統預設斷層資料或跳過斷層查詢
+                    print("Web環境：跳過斷層距離參數查詢（將由系統處理）")
+                    # 不設定 fault_gdf，保持為 None
 
         # 3. 讀取資料
         print("正在讀取資料...")
@@ -2496,38 +2527,29 @@ class NCEER:
                 final_df[col] = final_df[col].apply(lambda x: format_result(x) if pd.notnull(x) else "-")
 
         # 11. 選擇輸出資料夾 - 改善版本
-        if show_gui:
-            print("\n請選擇總輸出資料夾...")
-            try:
-                root = tk.Tk()
-                root.withdraw()
-                output_dir = filedialog.askdirectory(
-                    title="選擇所有分析結果的總輸出資料夾"
-                )
-                root.destroy()
-                
-                if not output_dir:
-                    print("⚠️ 未選擇輸出資料夾，使用當前目錄")
+        # 修改輸出目錄的處理
+        if output_dir is None:
+            if show_gui:
+                print("\n請選擇總輸出資料夾...")
+                try:
+                    root = tk.Tk()
+                    root.withdraw()
+                    output_dir = filedialog.askdirectory(
+                        title="選擇所有分析結果的總輸出資料夾"
+                    )
+                    root.destroy()
+                    
+                    if not output_dir:
+                        print("⚠️ 未選擇輸出資料夾，使用當前目錄")
+                        output_dir = os.getcwd()
+                    else:
+                        print(f"✅ 已選擇總輸出資料夾：{output_dir}")
+                except ImportError:
+                    # Django 環境中使用預設路徑
                     output_dir = os.getcwd()
-                else:
-                    print(f"✅ 已選擇總輸出資料夾：{output_dir}")
-            except ImportError:
-                # Django 環境中使用預設路徑
-                output_dir = os.getcwd()
-                print(f"網頁環境：使用預設輸出目錄：{output_dir}")   
-                                    
-            except Exception as e:
-                print(f"GUI 錯誤：{e}")
-                output_dir = os.getcwd()
-                print(f"使用當前工作目錄：{output_dir}")
-        else:
-            if output_file_path:
-                output_dir = os.path.dirname(output_file_path)
-                if not output_dir:
-                    output_dir = os.getcwd()
+                    print(f"網頁環境：使用預設輸出目錄：{output_dir}")                       
             else:
                 output_dir = os.getcwd()
-            print(f"使用輸出目錄：{output_dir}")
 
         # 確保輸出目錄存在
         if not os.path.exists(output_dir):
@@ -2539,13 +2561,14 @@ class NCEER:
                 output_dir = os.getcwd()
                 print(f"改用當前工作目錄：{output_dir}")
 
-        # 11.1 設定主要CSV輸出檔名
-        current_date = datetime.now().strftime("%m%d")
+        # 修改主要CSV輸出檔名 - 加上專案ID
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        project_prefix = f"{project_id}_" if project_id else ""
+        
         if output_file_path is None:
-            output_filename = os.path.join(output_dir, f"NCEER液化分析結果_{current_date}.csv")
+            output_filename = os.path.join(output_dir, f"{project_prefix}NCEER液化分析結果_{current_time}.csv")
         else:
             output_filename = output_file_path
-
         try:
             final_df.to_csv(output_filename, index=False, encoding='utf-8-sig')
             print(f"\n✅ 分析完成！")
@@ -2634,7 +2657,12 @@ class NCEER:
         print("=== 為每個鑽孔生成資料夾（包含Excel報表和圖表）===")
         print("="*60)
 
-        generate_individual = input("是否要為每個鑽孔生成獨立資料夾（包含Excel報表和JPG圖表）？(y/n，預設為 y): ").strip().lower()
+        if show_gui:
+            generate_individual = input("是否要為每個鑽孔生成獨立資料夾（包含Excel報表和JPG圖表）？(y/n，預設為 y): ").strip().lower()
+        else:
+            # Web環境：跳過個別鑽孔資料夾生成，由網站來控制
+            generate_individual = 'n'
+            print("Web環境：跳過個別鑽孔資料夾生成（將由網站功能提供）")
 
         if generate_individual in ['', 'y', 'yes']:
             try:
@@ -2668,7 +2696,7 @@ class NCEER:
                         
                         # 確保導入模組
                         try:
-                            from report import create_liquefaction_excel_from_dataframe
+                            from .report import create_liquefaction_excel_from_dataframe
                             create_liquefaction_excel_from_dataframe(well_data, excel_filepath)
                             print(f"  ✅ Excel報表：{excel_filename}")
                         except Exception as e:
@@ -2681,7 +2709,7 @@ class NCEER:
                         
                         # 確保導入並使用正確的圖表生成器
                         try:
-                            from report import LiquefactionChartGenerator
+                            from .report import LiquefactionChartGenerator
                             chart_generator = LiquefactionChartGenerator(
                                 n_chart_size=n_size,
                                 fs_chart_size=fs_size

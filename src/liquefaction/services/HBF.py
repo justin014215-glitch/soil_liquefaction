@@ -93,8 +93,15 @@ def get_input_file(input_file_path=None, show_gui=True):
     return file_path
 
 # 新增：取得統體單位重單位選擇
-def get_unit_weight_unit():
+# 新函數（替換原函數）：
+def get_unit_weight_unit(show_gui=True):
     """取得使用者選擇的統體單位重單位"""
+    if not show_gui:
+        # Web環境：使用預設值，不跳出GUI
+        print("Web環境：使用預設單位 t/m³")
+        return "t/m3", 1.0
+    
+    # GUI環境：原有的互動邏輯
     print("\n=== 統體單位重單位設定 ===")
     print("請選擇您的資料中統體單位重/統體密度的單位：")
     print("1. t/m³ (公噸/立方公尺)")
@@ -144,18 +151,19 @@ def get_parameter_file_path(filename):
     """取得參數檔案的絕對路徑"""
     try:
         from django.conf import settings
-        # 在 Django 中，假設參數檔案在 media 或其他配置目錄
-        # 暫時使用空的字典，避免檔案路徑問題
-        return None
+        return settings.BASE_DIR.parent / "參數" / filename
     except ImportError:
         # 非 Django 環境
-        return None
+        current_file = Path(__file__).resolve()
+        project_root = current_file.parent.parent.parent
+        return project_root / "參數" / filename
     
 # 暫時使用空的字典，避免檔案載入問題
-taiwan_seismic_data = {}
-general_zone_seismic_coefficients = {}
-taipei_basin_zones = {}
-fault_distance_parameters = {}
+
+taiwan_seismic_data = load_json_file(str(get_parameter_file_path("taiwan_seismic_data.json"))) or {}
+general_zone_seismic_coefficients = load_json_file(str(get_parameter_file_path("general_zone_seismic_coefficient.json"))) or {}
+taipei_basin_zones = load_json_file(str(get_parameter_file_path("taipei_basin_zone.json"))) or {}
+fault_distance_parameters = load_json_file(str(get_parameter_file_path("斷層參數.json"))) or {}
 
 # 台北盆地微分區係數
 taipei_basin_seismic_coefficients = {
@@ -799,7 +807,6 @@ def compute_distances_to_faults(x: float, y: float, source_epsg: str, faults_gdf
     
     return fault_distances
 
-#從檔案中的鑽孔座標獲取地震參數
 def coordinate_search_from_file(x_tw97: float, y_tw97: float, use_fault_data: bool = False, fault_gdf=None) -> Optional[Dict[str, Any]]:
     """使用檔案中的TWD97座標進行座標搜尋"""
     try:
@@ -811,7 +818,7 @@ def coordinate_search_from_file(x_tw97: float, y_tw97: float, use_fault_data: bo
         
         # 步驟2: 使用增強地理編碼獲取地址資訊
         try:
-            geo_info = enhanced_geocoding(lat, lon)  # 使用原有的函數
+            geo_info = enhanced_geocoding(lat, lon)
             city = geo_info.get('city')
             district = geo_info.get('district') 
             village = geo_info.get('village')
@@ -829,7 +836,14 @@ def coordinate_search_from_file(x_tw97: float, y_tw97: float, use_fault_data: bo
         # 步驟3: 新增斷層距離參數查詢 (最高優先順序)
         result = None
         
-        if use_fault_data and fault_gdf is not None:
+        # ========== 新增：台北地區跳過斷層計算 ==========
+        taipei_regions = ['臺北市', '新北市']
+        skip_fault_calculation = city in taipei_regions
+        
+        if skip_fault_calculation:
+            print(f"  檢測到台北地區 ({city})，跳過斷層距離參數查詢")
+        elif use_fault_data and fault_gdf is not None:
+        # ============================================
             try:
                 print(f"  正在計算斷層距離...")
                 # 修改：使用正確的函數呼叫方式
@@ -887,6 +901,8 @@ def coordinate_search_from_file(x_tw97: float, y_tw97: float, use_fault_data: bo
                     '資料來源': '台北盆地微分區'
                 }
         
+
+        
         # 步驟5: 如果沒有找到台北盆地資料，查詢一般震區資料
         if not result:
             print(f"  查詢一般震區資料...")
@@ -918,8 +934,8 @@ def coordinate_search_from_file(x_tw97: float, y_tw97: float, use_fault_data: bo
                 '鄉鎮/區': district or "",
                 '里': village or "",
                 '微分區': "",
-                'SDS': 0.8,  # 預設值
-                'SMS': 1.0,  # 預設值
+                'SDS': 0.6,  # 預設值
+                'SMS': 0.8,  # 預設值
                 'SD1': None,
                 'SM1': None,
                 '鄰近之斷層': "",
@@ -953,6 +969,7 @@ def coordinate_search_from_file(x_tw97: float, y_tw97: float, use_fault_data: bo
         logger.error(f"座標搜尋發生錯誤：{e}")
         print(f"座標搜尋錯誤：{e}")
         return None
+
 def get_earthquake_parameters_from_wells(df: pd.DataFrame, use_fault_data: bool = False, fault_gdf=None) -> Dict[str, Dict[str, Any]]:
     """從檔案中的鑽孔座標獲取地震參數"""
     well_params = {}
@@ -1552,7 +1569,7 @@ class HBF:
             
             # 根據情境計算 A_value
             if scenario == "Design":
-                A_value = 0.4 * SD_S
+                A_value = 0.4 * SD_S /3.5
             elif scenario == "MidEq": 
                 A_value = 0.4 * SD_S / 4.2
             elif scenario == "MaxEq":
@@ -1915,7 +1932,7 @@ class HBF:
         lpi_value = max(0, 1 - fs_numeric) * Wi * thickness
         
         return format_result(lpi_value)
-    def generate_simplified_report(self, final_df: pd.DataFrame, output_dir: str = None, 
+    def generate_simplified_report(self, final_df: pd.DataFrame, output_dir: str = None, project_id: Optional[str] = None,
                               scenario: str = "Design") -> str:
         """生成簡化的液化分析報表"""
         print(f"\n正在生成簡化報表（{scenario} ）...")
@@ -2127,8 +2144,10 @@ class HBF:
         # 生成輸出檔名
         if output_dir is None:
             output_dir = ""
-        
-        simplified_filename = os.path.join(output_dir, f"HBF_{scenario}.csv")
+
+        current_time = datetime.now().strftime("%m%d")
+        project_prefix = f"{project_id}_" if project_id else ""
+        simplified_filename = os.path.join(output_dir, f"{project_prefix}HBF_{scenario}_{current_time}.csv")
         
         try:
             simplified_df.to_csv(simplified_filename, index=False, encoding='utf-8-sig')
@@ -2146,7 +2165,7 @@ class HBF:
             print(f"儲存簡化報表時發生錯誤：{e}")
             return None
     
-    def generate_lpi_summary_report(self, final_df: pd.DataFrame, output_dir: str = None) -> str:
+    def generate_lpi_summary_report(self, final_df: pd.DataFrame, output_dir: str = None, project_id: Optional[str] = None) -> str:
         """生成LPI摘要報表"""
         print(f"\n正在生成LPI摘要報表...")
         
@@ -2232,6 +2251,7 @@ class HBF:
         if output_dir is None:
             output_dir = ""
         current_date = datetime.now().strftime("%m%d")
+        project_prefix = f"{project_id}_" if project_id else ""
         filename = os.path.join(output_dir, f"LPI_Summary_HBF_{current_date}.csv")
         
         try:
@@ -2249,16 +2269,19 @@ class HBF:
             return None
 
     def HBF_main(self, show_gui: bool = True, input_file_path: Optional[str] = None, 
-         output_file_path: Optional[str] = None, use_fault_data: bool = True,
+         output_file_path: Optional[str] = None, output_dir: Optional[str] = None, use_fault_data: bool = True,
          fault_shapefile_path: Optional[str] = None, custom_em: Optional[float] = None,
-         unit_weight_unit: Optional[str] = None):
+         unit_weight_unit: Optional[str] = None,
+         project_id: Optional[str] = None):
     
         print("="*80)
         print("開始 HBF 液化分析...")
         print("="*80)
+
         # 取得單位重單位設定
+
         if unit_weight_unit is None:
-            unit_name, conversion_factor = get_unit_weight_unit()
+            unit_name, conversion_factor = get_unit_weight_unit(show_gui)
             self.unit_weight_conversion_factor = conversion_factor
             print(f"單位重轉換係數設定為：{conversion_factor}")
         else:
@@ -2273,8 +2296,13 @@ class HBF:
             self.default_em = custom_em
             print(f"使用指定的 Em 值: {custom_em}")
         else:
-            self.default_em = self.get_user_em_value()
-            print(f"使用 Em 值: {self.default_em}")
+            if show_gui:
+                self.default_em = self.get_user_em_value()
+                print(f"使用 Em 值: {self.default_em}")
+            else:
+                # Web環境：使用預設值
+                self.default_em = 72
+                print(f"Web環境：使用預設 Em 值: 72")
 
         # 1. 取得檔案路徑
         if input_file_path is None and show_gui:
@@ -2299,31 +2327,36 @@ class HBF:
                     print(f"⚠️ 載入斷層資料失敗：{e}")
                     fault_gdf = None
             else:
-                # 詢問使用者是否要使用斷層資料
-                use_fault = input("是否要使用斷層距離參數？(y/n，預設為 y): ").strip().lower()
-                if use_fault in ['y', 'yes','']:
-                    print("請選擇斷層 shapefile (.shp) 檔案...")
-                    try:
-                        root = tk.Tk()
-                        root.withdraw()
-                        shp_path = filedialog.askopenfilename(
-                            title="選擇斷層 shapefile",
-                            filetypes=[("Shapefile", "*.shp")]
-                        )
-                        root.destroy()
-                        
-                        if shp_path:
-                            fault_gdf = gpd.read_file(shp_path)
-                            print(f"✅ 成功載入斷層資料：{len(fault_gdf)} 個記錄")
-                        else:
-                            print("⚠️ 未選擇斷層檔案，跳過斷層距離參數查詢")
+                if show_gui:
+                    # GUI模式：詢問使用者是否要使用斷層資料
+                    use_fault = input("是否要使用斷層距離參數？(y/n，預設為 y): ").strip().lower()
+                    if use_fault in ['y', 'yes','']:
+                        print("請選擇斷層 shapefile (.shp) 檔案...")
+                        try:
+                            root = tk.Tk()
+                            root.withdraw()
+                            shp_path = filedialog.askopenfilename(
+                                title="選擇斷層 shapefile",
+                                filetypes=[("Shapefile", "*.shp")]
+                            )
+                            root.destroy()
+                            
+                            if shp_path:
+                                fault_gdf = gpd.read_file(shp_path)
+                                print(f"✅ 成功載入斷層資料：{len(fault_gdf)} 個記錄")
+                            else:
+                                print("⚠️ 未選擇斷層檔案，跳過斷層距離參數查詢")
+                                use_fault_data = False
+                        except Exception as e:
+                            print(f"⚠️ 載入斷層資料失敗：{e}")
                             use_fault_data = False
-                    except Exception as e:
-                        print(f"⚠️ 載入斷層資料失敗：{e}")
+                    else:
+                        print("跳過斷層距離參數查詢")
                         use_fault_data = False
                 else:
-                    print("跳過斷層距離參數查詢")
-                    use_fault_data = False
+                    # Web環境：使用系統預設斷層資料或跳過斷層查詢
+                    print("Web環境：跳過斷層距離參數查詢（將由系統處理）")
+                    # 不設定 fault_gdf，保持為 None
 
         # 3. 讀取資料
         print("正在讀取資料...")
@@ -2629,63 +2662,49 @@ class HBF:
             if col in final_df.columns:
                 final_df[col] = final_df[col].apply(lambda x: format_result(x) if pd.notnull(x) else "-")
 
-        # 11. 選擇輸出資料夾 - 改善版本
-        if show_gui:
-            print("\n請選擇總輸出資料夾...")
-            try:
-                root = tk.Tk()
-                root.withdraw()
-                output_dir = filedialog.askdirectory(
-                    title="選擇所有分析結果的總輸出資料夾"
-                )
-                root.destroy()
-                
-                if not output_dir:
-                    print("⚠️ 未選擇輸出資料夾，使用當前目錄")
-                    output_dir = os.getcwd()
+        # 11. 修改輸出目錄的處理
+            if output_dir is None:
+                if show_gui:
+                    print("\n請選擇總輸出資料夾...")
+                    try:
+                        root = tk.Tk()
+                        root.withdraw()
+                        output_dir = filedialog.askdirectory(
+                            title="選擇所有分析結果的總輸出資料夾"
+                        )
+                        root.destroy()
+                        
+                        if not output_dir:
+                            print("⚠️ 未選擇輸出資料夾，使用當前目錄")
+                            output_dir = os.getcwd()
+                        else:
+                            print(f"✅ 已選擇總輸出資料夾：{output_dir}")
+                    except ImportError:
+                        # Django 環境中使用預設路徑
+                        output_dir = os.getcwd()
+                        print(f"網頁環境：使用預設輸出目錄：{output_dir}")                       
                 else:
-                    print(f"✅ 已選擇總輸出資料夾：{output_dir}")
-            except ImportError:
-                # Django 環境中使用預設路徑
-                output_dir = os.getcwd()
-                print(f"網頁環境：使用預設輸出目錄：{output_dir}")                
-            except Exception as e:
-                print(f"GUI 錯誤：{e}")
-                output_dir = os.getcwd()
-                print(f"使用當前工作目錄：{output_dir}")
-        else:
-            if output_file_path:
-                output_dir = os.path.dirname(output_file_path)
-                if not output_dir:
                     output_dir = os.getcwd()
+
+            # 確保輸出目錄存在
+            if not os.path.exists(output_dir):
+                try:
+                    os.makedirs(output_dir)
+                    print(f"✅ 已創建輸出目錄：{output_dir}")
+                except Exception as e:
+                    print(f"❌ 無法創建輸出目錄：{e}")
+                    output_dir = os.getcwd()
+                    print(f"改用當前工作目錄：{output_dir}")
+
+            # 修改主要CSV輸出檔名 - 加上專案ID
+            current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+            project_prefix = f"{project_id}_" if project_id else ""
+            
+            if output_file_path is None:
+                output_filename = os.path.join(output_dir, f"{project_prefix}NCEER液化分析結果_{current_time}.csv")
             else:
-                output_dir = os.getcwd()
-            print(f"使用輸出目錄：{output_dir}")
+                output_filename = output_file_path
 
-        # 確保輸出目錄存在
-        if not os.path.exists(output_dir):
-            try:
-                os.makedirs(output_dir)
-                print(f"✅ 已創建輸出目錄：{output_dir}")
-            except Exception as e:
-                print(f"❌ 無法創建輸出目錄：{e}")
-                output_dir = os.getcwd()
-                print(f"改用當前工作目錄：{output_dir}")
-
-        # 11.1 設定主要CSV輸出檔名
-        current_date = datetime.now().strftime("%m%d")
-        if output_file_path is None:
-            output_filename = os.path.join(output_dir, f"HBF液化分析結果_{current_date}.csv")
-        else:
-            output_filename = output_file_path
-
-        try:
-            final_df.to_csv(output_filename, index=False, encoding='utf-8-sig')
-            print(f"\n✅ 分析完成！")
-            print(f"✅ 已儲存所有結果至：{output_filename}")
-        except Exception as e:
-            print(f"儲存檔案錯誤：{e}")
-            return final_df, lpi_summary, file_path
 
         # 12. 輸出詳細摘要統計
         print("\n" + "="*80)
@@ -2767,7 +2786,12 @@ class HBF:
         print("=== 為每個鑽孔生成資料夾（包含Excel報表和圖表）===")
         print("="*60)
 
-        generate_individual = input("是否要為每個鑽孔生成獨立資料夾（包含Excel報表和JPG圖表）？(y/n，預設為 y): ").strip().lower()
+        if show_gui:
+            generate_individual = input("是否要為每個鑽孔生成獨立資料夾（包含Excel報表和JPG圖表）？(y/n，預設為 y): ").strip().lower()
+        else:
+            # Web環境：跳過個別鑽孔資料夾生成，由網站來控制
+            generate_individual = 'n'
+            print("Web環境：跳過個別鑽孔資料夾生成（將由網站功能提供）")
 
         if generate_individual in ['', 'y', 'yes']:
             try:
@@ -2801,7 +2825,7 @@ class HBF:
                         
                         # 確保導入模組
                         try:
-                            from report import create_liquefaction_excel_from_dataframe
+                            from .report import create_liquefaction_excel_from_dataframe
                             create_liquefaction_excel_from_dataframe(well_data, excel_filepath)
                             print(f"  ✅ Excel報表：{excel_filename}")
                         except Exception as e:
@@ -2814,7 +2838,7 @@ class HBF:
                         
                         # 確保導入並使用正確的圖表生成器
                         try:
-                            from report import LiquefactionChartGenerator
+                            from .report import LiquefactionChartGenerator
                             chart_generator = LiquefactionChartGenerator(
                                 n_chart_size=n_size,
                                 fs_chart_size=fs_size
