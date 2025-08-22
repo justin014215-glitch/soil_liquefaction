@@ -1,0 +1,241 @@
+{% extends 'base.html' %}
+
+{% block title %}鑽孔 {{ borehole.borehole_id }} - {{ project.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.layer-table th, .layer-table td {
+    padding: 0.5rem 0.25rem;
+    font-size: 0.875rem;
+}
+.stats-card {
+    border-left: 4px solid #007bff;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2><i class="fas fa-oil-well"></i> 鑽孔 {{ borehole.borehole_id }}</h2>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:borehole_data' project.pk %}">鑽井數據</a></li>
+                        <li class="breadcrumb-item active">{{ borehole.borehole_id }}</li>
+                    </ol>
+                </nav>
+            </div>
+            <div class="btn-group" role="group">
+                <a href="{% url 'liquefaction:borehole_data' project.pk %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回列表
+                </a>
+                {% if analysis_results %}
+                <a href="{% url 'liquefaction:results' project.pk %}?borehole={{ borehole.borehole_id }}" class="btn btn-success">
+                    <i class="fas fa-chart-line"></i> 查看分析結果
+                </a>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 鑽孔基本資訊 -->
+<div class="row mb-4">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-info-circle"></i> 鑽孔基本資訊</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-sm-5">鑽孔編號:</dt>
+                            <dd class="col-sm-7">{{ borehole.borehole_id }}</dd>
+                            
+                            <dt class="col-sm-5">TWD97 座標:</dt>
+                            <dd class="col-sm-7">
+                                X: {{ borehole.twd97_x|floatformat:2 }}<br>
+                                Y: {{ borehole.twd97_y|floatformat:2 }}
+                            </dd>
+                            
+                            <dt class="col-sm-5">地表高程:</dt>
+                            <dd class="col-sm-7">{{ borehole.surface_elevation|floatformat:2|default:"-" }}m</dd>
+                            
+                            <dt class="col-sm-5">地下水位:</dt>
+                            <dd class="col-sm-7">{{ borehole.water_depth|floatformat:2 }}m</dd>
+                        </dl>
+                    </div>
+                    <div class="col-md-6">
+                        <dl class="row">
+                            <dt class="col-sm-5">行政區域:</dt>
+                            <dd class="col-sm-7">
+                                {% if borehole.city %}{{ borehole.city }}{% endif %}
+                                {% if borehole.district %}{{ borehole.district }}{% endif %}
+                                {% if borehole.village %}{{ borehole.village }}{% endif %}
+                                {% if not borehole.city and not borehole.district %}-{% endif %}
+                            </dd>
+                            
+                            <dt class="col-sm-5">場址分類:</dt>
+                            <dd class="col-sm-7">{{ borehole.site_class|default:"-" }}</dd>
+                            
+                            <dt class="col-sm-5">Vs30:</dt>
+                            <dd class="col-sm-7">{{ borehole.vs30|floatformat:0|default:"-" }} m/s</dd>
+                            
+                            <dt class="col-sm-5">鄰近斷層:</dt>
+                            <dd class="col-sm-7">{{ borehole.nearby_fault|default:"-" }}</dd>
+                        </dl>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 統計資訊 -->
+    <div class="col-md-4">
+        <div class="card stats-card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-bar"></i> 統計資訊</h5>
+            </div>
+            <div class="card-body">
+                <div class="row text-center">
+                    <div class="col-6 mb-3">
+                        <h4 class="text-primary">{{ total_layers }}</h4>
+                        <small class="text-muted">土層數量</small>
+                    </div>
+                    <div class="col-6 mb-3">
+                        <h4 class="text-info">{{ max_depth|floatformat:1 }}m</h4>
+                        <small class="text-muted">最大深度</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-success">{{ n_stats.count }}</h4>
+                        <small class="text-muted">N值數量</small>
+                    </div>
+                    <div class="col-6">
+                        <h4 class="text-warning">{{ n_stats.avg|floatformat:1|default:"-" }}</h4>
+                        <small class="text-muted">平均N值</small>
+                    </div>
+                </div>
+                
+                {% if n_stats.min and n_stats.max %}
+                <hr>
+                <p class="mb-1"><strong>N值範圍:</strong> {{ n_stats.min|floatformat:0 }} ~ {{ n_stats.max|floatformat:0 }}</p>
+                {% endif %}
+                
+                {% if analysis_results %}
+                <hr>
+                <p class="mb-1"><strong>已分析方法:</strong></p>
+                {% for method_code, method_data in analysis_results.items %}
+                <span class="badge bg-success me-1">{{ method_code }}</span>
+                {% endfor %}
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 土層詳細數據 -->
+<div class="row">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-layers"></i> 土層詳細數據</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover layer-table">
+                        <thead>
+                            <tr>
+                                <th>序號</th>
+                                <th>深度範圍 (m)</th>
+                                <th>厚度 (m)</th>
+                                <th>取樣編號</th>
+                                <th>土壤分類</th>
+                                <th>SPT-N</th>
+                                <th>單位重<br>(t/m³)</th>
+                                <th>含水量<br>(%)</th>
+                                <th>細料含量<br>(%)</th>
+                                <th>塑性指數<br>(%)</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for layer in soil_layers %}
+                            <tr>
+                                <td>{{ forloop.counter }}</td>
+                                <td>{{ layer.top_depth|floatformat:1 }} ~ {{ layer.bottom_depth|floatformat:1 }}</td>
+                                <td>{{ layer.thickness|floatformat:1 }}</td>
+                                <td>{{ layer.sample_id|default:"-" }}</td>
+                                <td>
+                                    {% if layer.uscs %}
+                                    <span class="badge bg-secondary">{{ layer.uscs }}</span>
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td>
+                                    {% if layer.spt_n %}
+                                    <strong>{{ layer.spt_n|floatformat:0 }}</strong>
+                                    {% else %}-{% endif %}
+                                </td>
+                                <td>{{ layer.unit_weight|floatformat:2|default:"-" }}</td>
+                                <td>{{ layer.water_content|floatformat:1|default:"-" }}</td>
+                                <td>{{ layer.fines_content|floatformat:1|default:"-" }}</td>
+                                <td>{{ layer.plastic_index|floatformat:1|default:"-" }}</td>
+                            </tr>
+                            {% empty %}
+                            <tr>
+                                <td colspan="10" class="text-center text-muted py-4">
+                                    <i class="fas fa-exclamation-triangle fa-2x mb-2"></i><br>
+                                    此鑽孔沒有土層數據
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 分析結果（如果有） -->
+{% if analysis_results %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-chart-line"></i> 分析結果摘要</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    此鑽孔已完成 {{ analysis_results|length }} 種方法的液化分析。
+                    <a href="{% url 'liquefaction:results' project.pk %}?borehole={{ borehole.borehole_id }}" class="btn btn-sm btn-primary ms-2">
+                        查看詳細分析結果
+                    </a>
+                </div>
+                
+                <div class="row">
+                    {% for method_code, method_data in analysis_results.items %}
+                    <div class="col-md-6 mb-3">
+                        <div class="card border-success">
+                            <div class="card-header bg-light">
+                                <h6 class="mb-0">{{ method_data.name }} 分析結果</h6>
+                            </div>
+                            <div class="card-body">
+                                <p class="mb-1">分析土層: {{ method_data.results|length }} 層</p>
+                                <p class="mb-1">液化風險評估: 詳細結果請查看完整分析頁面</p>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

@@ -79,3 +79,28 @@ def method_progress_bar(method_name, current, total):
             'progress': 0,
             'is_completed': False
         }
+@register.filter
+def mul(value, arg):
+    """
+    範本過濾器：乘法運算
+    使用方法：{{ value|mul:arg }}
+    """
+    try:
+        return float(value) * float(arg)
+    except (ValueError, TypeError):
+        return 0
+
+@register.filter 
+def div(value, arg):
+    """
+    範本過濾器：除法運算
+    使用方法：{{ value|div:arg }}
+    """
+    try:
+        if float(arg) == 0:
+            return 0
+        return float(value) / float(arg)
+    except (ValueError, TypeError):
+        return 0
+    
+    

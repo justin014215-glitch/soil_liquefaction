@@ -103,6 +103,30 @@ class AnalysisProject(models.Model):
             return self.get_analysis_method_display()
         else:
             return "待選擇"
+    # 在類別的最後添加這個方法
+    def get_fault_shapefile_path(self):
+        """取得斷層 Shapefile 檔案路徑"""
+        if self.fault_shapefile and self.fault_shapefile.name:
+            # 如果有上傳自訂的斷層檔案，使用自訂檔案
+            return self.fault_shapefile.path
+        else:
+            # 使用預設的斷層檔案
+            from django.conf import settings
+            import os
+            default_shapefile = get_default_shapefile_path()
+            default_path = os.path.join(settings.MEDIA_ROOT, default_shapefile)
+            
+            # 檢查預設檔案是否存在
+            if os.path.exists(default_path):
+                return default_path
+            else:
+                # 如果預設檔案不存在，返回 None
+                print(f"⚠️ 預設斷層檔案不存在：{default_path}")
+                return None
+    
+    def has_fault_data(self):
+        """檢查是否有可用的斷層數據"""
+        return self.get_fault_shapefile_path() is not None
 # 其他模型保持不變...
 class BoreholeData(models.Model):
     """鑽孔資料模型"""
@@ -318,12 +342,11 @@ class AnalysisResult(models.Model):
             import shutil
             shutil.rmtree(output_dir)    
 
-
-class Meta:
-    verbose_name = "分析結果"
-    verbose_name_plural = "分析結果"
-    # 新增：確保同一土層的同一分析方法只有一個結果
-    unique_together = ['soil_layer', 'analysis_method']
-
-def __str__(self):
-    return f"{self.soil_layer} - {self.get_analysis_method_display()}"
+    class Meta:
+        verbose_name = "分析結果"
+        verbose_name_plural = "分析結果"
+        # 確保同一土層的同一分析方法只有一個結果
+        unique_together = ['soil_layer', 'analysis_method']
+    
+    def __str__(self):
+        return f"{self.soil_layer} - {self.get_analysis_method_display()}"

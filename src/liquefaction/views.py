@@ -84,7 +84,6 @@ def project_create(request):
             # 處理表單數據
             name = request.POST.get('name')
             description = request.POST.get('description', '')
-            analysis_method = request.POST.get('analysis_method', 'HBF')
             em_value = float(request.POST.get('em_value', 72))
             unit_weight_unit = request.POST.get('unit_weight_unit', 't/m3')
             use_fault_data = request.POST.get('use_fault_data') == 'on'
@@ -93,8 +92,8 @@ def project_create(request):
             project = AnalysisProject.objects.create(
                 user=request.user,
                 name=name,
+                analysis_method='HBF',
                 description=description,
-                analysis_method=analysis_method,
                 em_value=em_value,
                 unit_weight_unit=unit_weight_unit,
                 use_fault_data=use_fault_data,
@@ -144,7 +143,6 @@ def project_create(request):
             messages.error(request, f'創建專案時發生錯誤：{str(e)}')
     
     context = {
-        'analysis_methods': AnalysisProject._meta.get_field('analysis_method').choices,
         'unit_weight_units': AnalysisProject._meta.get_field('unit_weight_unit').choices,
     }
     
@@ -440,7 +438,9 @@ def analyze(request, pk):
             
             for method in selected_methods:
                 print(f"開始執行 {method} 分析...")
-                
+                analysis_engine = LiquefactionAnalysisEngine(project, analysis_method=method)
+                analysis_result = analysis_engine.run_analysis()
+
                 # 暫時更新專案的分析方法
                 project.analysis_method = method
                 project.save()
@@ -535,18 +535,30 @@ def results(request, pk):
         messages.warning(request, '專案尚未有分析結果')
         return redirect('liquefaction:project_detail', pk=project.pk)
     
-    # 獲取可用的分析方法
-    available_methods = AnalysisResult.objects.filter(
+    # 使用更可靠的方法獲取可用分析方法
+    available_methods_raw = AnalysisResult.objects.filter(
         soil_layer__borehole__project=project
     ).values_list('analysis_method', flat=True).distinct().order_by('analysis_method')
-    
-    print(f"🔍 可用的分析方法: {list(available_methods)}")
+
+    # 轉換為列表並過濾空值
+    available_methods_list = [method for method in available_methods_raw if method]
+
+    # 如果上面的方法失敗，手動檢查每個方法
+    if not available_methods_list:
+        all_methods = ['HBF', 'NCEER', 'AIJ', 'JRA']
+        available_methods_list = []
+        for method in all_methods:
+            if AnalysisResult.objects.filter(
+                soil_layer__borehole__project=project,
+                analysis_method=method
+            ).exists():
+                available_methods_list.append(method)
     
     # 獲取方法名稱對應
     method_choices = dict(AnalysisProject._meta.get_field('analysis_method').choices)
     available_methods_display = [
         (method, method_choices.get(method, method)) 
-        for method in available_methods
+        for method in available_methods_raw
     ]
     
     print(f"🔍 顯示用的方法對應: {available_methods_display}")
@@ -711,7 +723,7 @@ def reanalyze(request, pk):
     
     if request.method == 'POST':
         try:
-            # 獲取選擇的分析方法
+            # 取得選擇的分析方法
             selected_methods = request.POST.getlist('analysis_methods')
             if not selected_methods:
                 messages.error(request, '請至少選擇一種分析方法')
@@ -759,17 +771,12 @@ def reanalyze(request, pk):
             
             total_success = 0
             total_errors = []
-            original_method = project.analysis_method
             
             for method in selected_methods:
                 print(f"開始重新執行 {method} 分析...")
                 
-                # 暫時更新專案的分析方法
-                project.analysis_method = method
-                project.save()
-                
-                # 創建分析引擎並執行分析
-                analysis_engine = LiquefactionAnalysisEngine(project)
+                # 建立專門針對該方法的分析引擎實例
+                analysis_engine = LiquefactionAnalysisEngine(project, analysis_method=method)
                 analysis_result = analysis_engine.run_analysis()
                 
                 print(f"{method} 重新分析結果: {analysis_result}")
@@ -791,9 +798,6 @@ def reanalyze(request, pk):
                     # 顯示詳細錯誤
                     for error in analysis_result.get('errors', []):
                         messages.error(request, f'{method} 錯誤：{error}')
-            
-            # 恢復原始分析方法
-            project.analysis_method = original_method
             
             # 更新專案狀態
             if total_success > 0:
@@ -817,7 +821,7 @@ def reanalyze(request, pk):
             return redirect('liquefaction:project_detail', pk=project.pk)
     
     # GET 請求，顯示重新分析確認頁面
-    # 獲取現有的分析結果統計
+    # 取得現有的分析結果統計
     existing_results_by_method = {}
     for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
         count = AnalysisResult.objects.filter(
@@ -839,6 +843,7 @@ def reanalyze(request, pk):
     }
     
     return render(request, 'liquefaction/reanalyze.html', context)
+
 @login_required
 def download_analysis_file(request, pk, filename):
     """下載分析結果檔案"""
@@ -867,3 +872,244 @@ def project_files(request, pk):
     }
     
     return render(request, 'liquefaction/project_files.html', context)
+
+
+# 在 src/liquefaction/views.py 中新增以下視圖
+
+@login_required
+def borehole_data(request, pk):
+    """鑽井數據總覽視圖"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    # 取得所有鑽孔數據
+    boreholes = BoreholeData.objects.filter(project=project).prefetch_related('soil_layers').order_by('borehole_id')
+    
+    # 搜尋和篩選
+    search_query = request.GET.get('search', '')
+    if search_query:
+        boreholes = boreholes.filter(borehole_id__icontains=search_query)
+    
+    # 為每個鑽孔計算統計資訊
+    borehole_stats = []
+    for borehole in boreholes:
+        soil_layers = borehole.soil_layers.all().order_by('top_depth')
+        
+        # 計算統計數據
+        total_layers = soil_layers.count()
+        max_depth = max([layer.bottom_depth for layer in soil_layers]) if soil_layers else 0
+        min_n_value = min([layer.spt_n for layer in soil_layers if layer.spt_n is not None]) if soil_layers else None
+        max_n_value = max([layer.spt_n for layer in soil_layers if layer.spt_n is not None]) if soil_layers else None
+        avg_n_value = sum([layer.spt_n for layer in soil_layers if layer.spt_n is not None]) / total_layers if total_layers > 0 else None
+        
+        # 土壤類型分布
+        soil_types = list(set([layer.uscs for layer in soil_layers if layer.uscs]))
+        
+        # 檢查是否有分析結果
+        has_analysis = AnalysisResult.objects.filter(soil_layer__borehole=borehole).exists()
+        analysis_methods = list(set(AnalysisResult.objects.filter(
+            soil_layer__borehole=borehole
+        ).values_list('analysis_method', flat=True)))
+        
+        borehole_stats.append({
+            'borehole': borehole,
+            'total_layers': total_layers,
+            'max_depth': max_depth,
+            'min_n_value': min_n_value,
+            'max_n_value': max_n_value,
+            'avg_n_value': avg_n_value,
+            'soil_types': soil_types,
+            'has_analysis': has_analysis,
+            'analysis_methods': analysis_methods,
+        })
+    
+    # 分頁
+    from django.core.paginator import Paginator
+    paginator = Paginator(borehole_stats, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'project': project,
+        'page_obj': page_obj,
+        'search_query': search_query,
+        'total_boreholes': boreholes.count(),
+    }
+    
+    return render(request, 'liquefaction/borehole_data.html', context)
+
+
+@login_required
+def borehole_detail(request, pk, borehole_id):
+    """單個鑽孔詳細數據視圖"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    borehole = get_object_or_404(BoreholeData, project=project, borehole_id=borehole_id)
+    
+    # 取得土層數據
+    soil_layers = SoilLayer.objects.filter(borehole=borehole).order_by('top_depth')
+    
+    # 取得分析結果（如果有）
+    analysis_results = {}
+    for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
+        results = AnalysisResult.objects.filter(
+            soil_layer__borehole=borehole,
+            analysis_method=method_code
+        ).order_by('soil_layer__top_depth')
+        
+        if results.exists():
+            analysis_results[method_code] = {
+                'name': method_name,
+                'results': results
+            }
+    
+    # 計算鑽孔統計
+    total_layers = soil_layers.count()
+    max_depth = max([layer.bottom_depth for layer in soil_layers]) if soil_layers else 0
+    
+    # N值統計
+    n_values = [layer.spt_n for layer in soil_layers if layer.spt_n is not None]
+    n_stats = {
+        'count': len(n_values),
+        'min': min(n_values) if n_values else None,
+        'max': max(n_values) if n_values else None,
+        'avg': sum(n_values) / len(n_values) if n_values else None,
+    }
+    
+    # 土壤類型分布
+    soil_type_counts = {}
+    for layer in soil_layers:
+        if layer.uscs:
+            soil_type_counts[layer.uscs] = soil_type_counts.get(layer.uscs, 0) + 1
+    
+    # 深度分布（每5米一組）
+    depth_distribution = {}
+    for layer in soil_layers:
+        depth_group = int(layer.top_depth // 5) * 5
+        key = f"{depth_group}-{depth_group + 5}m"
+        depth_distribution[key] = depth_distribution.get(key, 0) + 1
+    
+    context = {
+        'project': project,
+        'borehole': borehole,
+        'soil_layers': soil_layers,
+        'analysis_results': analysis_results,
+        'total_layers': total_layers,
+        'max_depth': max_depth,
+        'n_stats': n_stats,
+        'soil_type_counts': soil_type_counts,
+        'depth_distribution': depth_distribution,
+    }
+    
+    return render(request, 'liquefaction/borehole_detail.html', context)
+
+# 在 src/liquefaction/views.py 的最後添加以下函數
+
+@login_required
+def borehole_data(request, pk):
+    """鑽井數據總覽視圖"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    # 取得所有鑽孔數據
+    boreholes = BoreholeData.objects.filter(project=project).prefetch_related('soil_layers').order_by('borehole_id')
+    
+    # 搜尋和篩選
+    search_query = request.GET.get('search', '')
+    if search_query:
+        boreholes = boreholes.filter(borehole_id__icontains=search_query)
+    
+    # 為每個鑽孔計算統計資訊
+    borehole_stats = []
+    for borehole in boreholes:
+        soil_layers = borehole.soil_layers.all().order_by('top_depth')
+        
+        # 計算統計數據
+        total_layers = soil_layers.count()
+        max_depth = max([layer.bottom_depth for layer in soil_layers]) if soil_layers else 0
+        n_values = [layer.spt_n for layer in soil_layers if layer.spt_n is not None]
+        min_n_value = min(n_values) if n_values else None
+        max_n_value = max(n_values) if n_values else None
+        avg_n_value = sum(n_values) / len(n_values) if n_values else None
+        
+        # 土壤類型分布
+        soil_types = list(set([layer.uscs for layer in soil_layers if layer.uscs]))
+        
+        # 檢查是否有分析結果
+        has_analysis = AnalysisResult.objects.filter(soil_layer__borehole=borehole).exists()
+        analysis_methods = list(set(AnalysisResult.objects.filter(
+            soil_layer__borehole=borehole
+        ).values_list('analysis_method', flat=True)))
+        
+        borehole_stats.append({
+            'borehole': borehole,
+            'total_layers': total_layers,
+            'max_depth': max_depth,
+            'min_n_value': min_n_value,
+            'max_n_value': max_n_value,
+            'avg_n_value': avg_n_value,
+            'soil_types': soil_types,
+            'has_analysis': has_analysis,
+            'analysis_methods': analysis_methods,
+        })
+    
+    # 分頁
+    from django.core.paginator import Paginator
+    paginator = Paginator(borehole_stats, 10)
+    page_number = request.GET.get('page')
+    page_obj = paginator.get_page(page_number)
+    
+    context = {
+        'project': project,
+        'page_obj': page_obj,
+        'search_query': search_query,
+        'total_boreholes': boreholes.count(),
+    }
+    
+    return render(request, 'liquefaction/borehole_data.html', context)
+
+
+@login_required
+def borehole_detail(request, pk, borehole_id):
+    """單個鑽孔詳細數據視圖"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    borehole = get_object_or_404(BoreholeData, project=project, borehole_id=borehole_id)
+    
+    # 取得土層數據
+    soil_layers = SoilLayer.objects.filter(borehole=borehole).order_by('top_depth')
+    
+    # 取得分析結果（如果有）
+    analysis_results = {}
+    for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
+        results = AnalysisResult.objects.filter(
+            soil_layer__borehole=borehole,
+            analysis_method=method_code
+        ).order_by('soil_layer__top_depth')
+        
+        if results.exists():
+            analysis_results[method_code] = {
+                'name': method_name,
+                'results': results
+            }
+    
+    # 計算鑽孔統計
+    total_layers = soil_layers.count()
+    max_depth = max([layer.bottom_depth for layer in soil_layers]) if soil_layers else 0
+    
+    # N值統計
+    n_values = [layer.spt_n for layer in soil_layers if layer.spt_n is not None]
+    n_stats = {
+        'count': len(n_values),
+        'min': min(n_values) if n_values else None,
+        'max': max(n_values) if n_values else None,
+        'avg': sum(n_values) / len(n_values) if n_values else None,
+    }
+    
+    context = {
+        'project': project,
+        'borehole': borehole,
+        'soil_layers': soil_layers,
+        'analysis_results': analysis_results,
+        'total_layers': total_layers,
+        'max_depth': max_depth,
+        'n_stats': n_stats,
+    }
+    
+    return render(request, 'liquefaction/borehole_detail.html', context)

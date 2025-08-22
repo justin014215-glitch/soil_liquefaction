@@ -28,4 +28,8 @@ urlpatterns = [
     # API 端點
     path('api/seismic-data/', views.api_seismic_data, name='api_seismic_data'),    
     path('projects/', views.project_list, name='project_list'),
+
+    # 鑽孔資料
+    path('projects/<uuid:pk>/borehole-data/', views.borehole_data, name='borehole_data'),
+    path('projects/<uuid:pk>/borehole/<str:borehole_id>/', views.borehole_detail, name='borehole_detail'),
 ]

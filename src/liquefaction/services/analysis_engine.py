@@ -85,17 +85,29 @@ print(f"分析方法可用狀態: HBF={HBF_AVAILABLE}, NCEER={NCEER_AVAILABLE}, 
 class LiquefactionAnalysisEngine:
     """液化分析計算引擎 - 專門用於調用外部分析方法"""
     
-    def __init__(self, project: AnalysisProject):
+    def __init__(self, project: AnalysisProject,analysis_method: str = None):
         self.project = project
-        self.analysis_method = project.analysis_method
+        self.analysis_method = analysis_method or project.analysis_method
         self.em_value = project.em_value
         self.unit_weight_unit = project.unit_weight_unit
         self.use_fault_data = project.use_fault_data
         self.warnings = []
         self.errors = []
+        self.fault_shapefile_path = None
         self._is_running = False  # 添加執行標記
         # 創建專案專用的輸出目錄
         self.project_output_dir = self._create_project_output_dir()
+    
+    def set_fault_shapefile_path(self, path: str):
+        """設定斷層 shapefile 的檔案路徑"""
+        self.fault_shapefile_path = path
+
+    def get_fault_shapefile_path(self) -> str:
+        """回傳斷層 shapefile 的檔案路徑"""
+        if self.fault_shapefile_path is None:
+            raise ValueError("Fault shapefile path 尚未設定")
+        return self.fault_shapefile_path
+        
     def _create_project_output_dir(self) -> str:
         """創建專案專用的輸出目錄"""
         # 使用專案ID和名稱創建目錄

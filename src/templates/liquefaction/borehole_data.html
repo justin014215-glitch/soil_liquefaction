@@ -1,0 +1,268 @@
+{% extends 'base.html' %}
+
+{% block title %}鑽井數據 - {{ project.name }}{% endblock %}
+
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2><i class="fas fa-oil-well"></i> 鑽井數據</h2>
+                <nav aria-label="breadcrumb">
+                    <ol class="breadcrumb">
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:index' %}">首頁</a></li>
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_list' %}">我的專案</a></li>
+                        <li class="breadcrumb-item"><a href="{% url 'liquefaction:project_detail' project.pk %}">{{ project.name }}</a></li>
+                        <li class="breadcrumb-item active">鑽井數據</li>
+                    </ol>
+                </nav>
+            </div>
+            <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left"></i> 返回專案
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- 統計摘要 -->
+<div class="row mb-4">
+    <div class="col-md-3">
+        <div class="card bg-info text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">總鑽孔數</h5>
+                        <h2>{{ total_boreholes }}</h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-oil-well fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-success text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">總土層數</h5>
+                        <h2>
+                            {% for borehole_stat in page_obj.object_list %}
+                                {% if forloop.first %}
+                                    {{ page_obj.object_list|length }}
+                                {% endif %}
+                            {% endfor %}
+                        </h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-layer-group fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-warning text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">已分析鑽孔</h5>
+                        <h2>
+                            {% for stat in page_obj.object_list %}
+                                {% if stat.has_analysis %}{{ forloop.counter0|add:1 }}{% endif %}
+                            {% endfor %}
+                        </h2>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-chart-line fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card bg-primary text-white">
+            <div class="card-body">
+                <div class="d-flex justify-content-between">
+                    <div>
+                        <h5 class="card-title">專案狀態</h5>
+                        <p class="mb-0">{{ project.get_status_display }}</p>
+                    </div>
+                    <div class="align-self-center">
+                        <i class="fas fa-info-circle fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 搜索和篩選 -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card">
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-md-6">
+                        <label for="search" class="form-label">搜索鑽孔</label>
+                        <input type="text" class="form-control" id="search" name="search" 
+                               value="{{ search_query }}" placeholder="輸入鑽孔編號">
+                    </div>
+                    <div class="col-md-3 d-flex align-items-end">
+                        <button type="submit" class="btn btn-outline-primary me-2">
+                            <i class="fas fa-search"></i> 搜索
+                        </button>
+                        <a href="{% url 'liquefaction:borehole_data' project.pk %}" class="btn btn-outline-secondary">
+                            <i class="fas fa-undo"></i> 重置
+                        </a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 鑽孔列表 -->
+<div class="row">
+    <div class="col-12">
+        {% if page_obj.object_list %}
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title mb-0"><i class="fas fa-list"></i> 鑽孔詳細資訊</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover">
+                        <thead>
+                            <tr>
+                                <th>鑽孔編號</th>
+                                <th>座標 (TWD97)</th>
+                                <th>地下水位</th>
+                                <th>土層數量</th>
+                                <th>最大深度</th>
+                                <th>N值範圍</th>
+                                <th>土壤類型</th>
+                                <th>分析狀態</th>
+                                <th>操作</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for stat in page_obj.object_list %}
+                            <tr>
+                                <td>
+                                    <strong>{{ stat.borehole.borehole_id }}</strong>
+                                </td>
+                                <td>
+                                    <small>
+                                        X: {{ stat.borehole.twd97_x|floatformat:2 }}<br>
+                                        Y: {{ stat.borehole.twd97_y|floatformat:2 }}
+                                    </small>
+                                </td>
+                                <td>{{ stat.borehole.water_depth|floatformat:2 }}m</td>
+                                <td>
+                                    <span class="badge bg-info">{{ stat.total_layers }}</span>
+                                </td>
+                                <td>{{ stat.max_depth|floatformat:1 }}m</td>
+                                <td>
+                                    {% if stat.min_n_value and stat.max_n_value %}
+                                    <small>
+                                        {{ stat.min_n_value|floatformat:0 }} ~ {{ stat.max_n_value|floatformat:0 }}<br>
+                                        <span class="text-muted">平均: {{ stat.avg_n_value|floatformat:1 }}</span>
+                                    </small>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% for soil_type in stat.soil_types|slice:":3" %}
+                                    <span class="badge bg-secondary me-1">{{ soil_type }}</span>
+                                    {% endfor %}
+                                    {% if stat.soil_types|length > 3 %}
+                                    <small class="text-muted">+{{ stat.soil_types|length|add:"-3" }}...</small>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if stat.has_analysis %}
+                                    <span class="badge bg-success mb-1">已分析</span><br>
+                                    {% for method in stat.analysis_methods %}
+                                    <span class="badge bg-info me-1">{{ method }}</span>
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="badge bg-secondary">未分析</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <a href="{% url 'liquefaction:borehole_detail' project.pk stat.borehole.borehole_id %}" 
+                                       class="btn btn-sm btn-outline-primary">
+                                        <i class="fas fa-eye"></i> 詳細
+                                    </a>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- 分頁 -->
+                {% if page_obj.has_other_pages %}
+                <nav aria-label="鑽孔分頁">
+                    <ul class="pagination justify-content-center">
+                        {% if page_obj.has_previous %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page=1{% if search_query %}&search={{ search_query }}{% endif %}">
+                                <i class="fas fa-angle-double-left"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.previous_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                <i class="fas fa-angle-left"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+
+                        {% for num in page_obj.paginator.page_range %}
+                        {% if page_obj.number == num %}
+                        <li class="page-item active">
+                            <span class="page-link">{{ num }}</span>
+                        </li>
+                        {% elif num > page_obj.number|add:'-3' and num < page_obj.number|add:'3' %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ num }}{% if search_query %}&search={{ search_query }}{% endif %}">{{ num }}</a>
+                        </li>
+                        {% endif %}
+                        {% endfor %}
+
+                        {% if page_obj.has_next %}
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.next_page_number }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                <i class="fas fa-angle-right"></i>
+                            </a>
+                        </li>
+                        <li class="page-item">
+                            <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}{% if search_query %}&search={{ search_query }}{% endif %}">
+                                <i class="fas fa-angle-double-right"></i>
+                            </a>
+                        </li>
+                        {% endif %}
+                    </ul>
+                </nav>
+                {% endif %}
+            </div>
+        </div>
+        {% else %}
+        <!-- 無鑽孔數據時的顯示 -->
+        <div class="card">
+            <div class="card-body text-center py-5">
+                <i class="fas fa-oil-well fa-4x text-muted mb-3"></i>
+                <h4 class="text-muted">沒有鑽孔數據</h4>
+                <p class="text-muted">專案中還沒有鑽孔數據，請先上傳 CSV 檔案。</p>
+                <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-primary">
+                    <i class="fas fa-upload"></i> 上傳數據
+                </a>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

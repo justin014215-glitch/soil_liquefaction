@@ -21,6 +21,11 @@
                 <a href="{% url 'liquefaction:project_update' project.pk %}" class="btn btn-outline-secondary">
                     <i class="fas fa-edit"></i> 編輯
                 </a>
+                {% if boreholes %}
+                <a href="{% url 'liquefaction:borehole_data' project.pk %}" class="btn btn-outline-info">
+                    <i class="fas fa-oil-well"></i> 鑽井數據
+                </a>
+                {% endif %}
                 {% if project.status == 'completed' %}
                 <a href="{% url 'liquefaction:results' project.pk %}" class="btn btn-success">
                     <i class="fas fa-chart-line"></i> 查看結果
@@ -48,11 +53,6 @@
                         <dl class="row">
                             <dt class="col-sm-4">專案名稱:</dt>
                             <dd class="col-sm-8">{{ project.name }}</dd>
-                            
-                            <dt class="col-sm-4">分析方法:</dt>
-                            <dd class="col-sm-8">
-                                <span class="badge bg-secondary">{{ project.get_analysis_method_display }}</span>
-                            </dd>
                             
                             <dt class="col-sm-4">狀態:</dt>
                             <dd class="col-sm-8">
@@ -132,64 +132,119 @@
 {% if boreholes and total_layers > 0 %}
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="card-title mb-0"><i class="fas fa-play"></i> 執行分析</h5>
+        <div class="card border-primary">
+            <div class="card-header bg-primary text-white">
+                <h5 class="card-title mb-0"><i class="fas fa-calculator"></i> 選擇分析方法</h5>
             </div>
             <div class="card-body">
-                <p class="mb-3">選擇要執行的分析方法：</p>
+                <div class="alert alert-info mb-3">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>提示：</strong>您可以選擇一種或多種分析方法來執行液化分析。建議執行多種方法進行比較分析。
+                </div>
                 
                 <form method="post" id="quickAnalysisForm">
                     {% csrf_token %}
                     <div class="row">
                         <div class="col-md-8">
                             <div class="row">
-                                <div class="col-md-6 mb-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="HBF" 
-                                               id="method_HBF">
-                                        <label class="form-check-label" for="method_HBF">
-                                            HBF (2012)
-                                        </label>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" 
+                                                       name="analysis_methods" value="HBF" 
+                                                       id="method_HBF">
+                                                <label class="form-check-label" for="method_HBF">
+                                                    <strong>HBF (2012)</strong>
+                                                </label>
+                                            </div>
+                                            <small class="text-muted">適用於台灣地區，考慮細料含量修正</small>
+                                            {% with analysis_methods_stats.HBF as stats %}
+                                            {% if stats.count > 0 %}
+                                            <div class="mt-2">
+                                                <span class="badge bg-success">已完成 {{ stats.count }} 層</span>
+                                            </div>
+                                            {% endif %}
+                                            {% endwith %}
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6 mb-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="NCEER" 
-                                               id="method_NCEER">
-                                        <label class="form-check-label" for="method_NCEER">
-                                            NCEER
-                                        </label>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" 
+                                                       name="analysis_methods" value="NCEER" 
+                                                       id="method_NCEER">
+                                                <label class="form-check-label" for="method_NCEER">
+                                                    <strong>NCEER</strong>
+                                                </label>
+                                            </div>
+                                            <small class="text-muted">國際標準方法，基於 SPT-N 值</small>
+                                            {% with analysis_methods_stats.NCEER as stats %}
+                                            {% if stats.count > 0 %}
+                                            <div class="mt-2">
+                                                <span class="badge bg-success">已完成 {{ stats.count }} 層</span>
+                                            </div>
+                                            {% endif %}
+                                            {% endwith %}
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6 mb-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="AIJ" 
-                                               id="method_AIJ">
-                                        <label class="form-check-label" for="method_AIJ">
-                                            AIJ
-                                        </label>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" 
+                                                       name="analysis_methods" value="AIJ" 
+                                                       id="method_AIJ">
+                                                <label class="form-check-label" for="method_AIJ">
+                                                    <strong>AIJ</strong>
+                                                </label>
+                                            </div>
+                                            <small class="text-muted">日本建築學會方法</small>
+                                            {% with analysis_methods_stats.AIJ as stats %}
+                                            {% if stats.count > 0 %}
+                                            <div class="mt-2">
+                                                <span class="badge bg-success">已完成 {{ stats.count }} 層</span>
+                                            </div>
+                                            {% endif %}
+                                            {% endwith %}
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-6 mb-2">
-                                    <div class="form-check">
-                                        <input class="form-check-input" type="checkbox" 
-                                               name="analysis_methods" value="JRA" 
-                                               id="method_JRA">
-                                        <label class="form-check-label" for="method_JRA">
-                                            JRA
-                                        </label>
+                                <div class="col-md-6 mb-3">
+                                    <div class="card h-100">
+                                        <div class="card-body">
+                                            <div class="form-check">
+                                                <input class="form-check-input" type="checkbox" 
+                                                       name="analysis_methods" value="JRA" 
+                                                       id="method_JRA">
+                                                <label class="form-check-label" for="method_JRA">
+                                                    <strong>JRA</strong>
+                                                </label>
+                                            </div>
+                                            <small class="text-muted">日本道路協會方法</small>
+                                            {% with analysis_methods_stats.JRA as stats %}
+                                            {% if stats.count > 0 %}
+                                            <div class="mt-2">
+                                                <span class="badge bg-success">已完成 {{ stats.count }} 層</span>
+                                            </div>
+                                            {% endif %}
+                                            {% endwith %}
+                                        </div>
                                     </div>
                                 </div>
-                                <div class="col-md-12 mt-2">
+                            </div>
+                            
+                            <div class="row">
+                                <div class="col-12">
                                     <div class="form-check">
                                         <input class="form-check-input" type="checkbox" 
                                                id="all_methods" onchange="toggleAllMethods()">
                                         <label class="form-check-label" for="all_methods">
                                             <strong>全部方法都執行</strong>
+                                            <small class="text-muted">- 一次性執行所有分析方法進行比較</small>
                                         </label>
                                     </div>
                                 </div>
@@ -197,9 +252,14 @@
                         </div>
                         <div class="col-md-4 d-flex align-items-center">
                             <div class="w-100">
-                                <button type="submit" class="btn btn-primary btn-lg w-100" onclick="return validateSelection()">
+                                <button type="submit" class="btn btn-primary btn-lg w-100 mb-3" onclick="return validateSelection()">
                                     <i class="fas fa-play"></i> 開始分析
                                 </button>
+                                {% if project.status == 'completed' %}
+                                <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-outline-warning w-100">
+                                    <i class="fas fa-redo"></i> 重新分析
+                                </a>
+                                {% endif %}
                             </div>
                         </div>
                     </div>

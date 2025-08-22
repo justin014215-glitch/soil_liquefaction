@@ -12,7 +12,6 @@ class AnalysisProjectForm(forms.ModelForm):
             'name', 
             'description', 
             'source_file', 
-            'analysis_method', 
             'em_value',
             'unit_weight_unit',
             'use_fault_data',
