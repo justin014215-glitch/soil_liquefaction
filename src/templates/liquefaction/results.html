@@ -35,6 +35,19 @@
     background-color: white;
     z-index: 10;
 }
+.loading {
+    border: 4px solid #f3f3f3;
+    border-top: 4px solid #3498db;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    animation: spin 2s linear infinite;
+    margin: 0 auto;
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
 </style>
 {% endblock %}
 
@@ -53,10 +66,46 @@
                     </ol>
                 </nav>
             </div>
+            <!-- 修改：改用下拉式選單提供多種下載選項 -->
             <div class="btn-group" role="group">
-                <a href="{% url 'liquefaction:export' project.pk %}" class="btn btn-success">
-                    <i class="fas fa-download"></i> 匯出結果
-                </a>
+                <div class="dropdown">
+                    <button class="btn btn-success dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                        <i class="fas fa-download"></i> 下載選項
+                    </button>
+                    <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
+                        <li><h6 class="dropdown-header">分析結果</h6></li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=csv">
+                                <i class="fas fa-file-csv"></i> 下載CSV格式
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package">
+                                <i class="fas fa-archive"></i> 下載完整分析包
+                            </a>
+                        </li>
+                        {% if method_filter %}
+                        <li>
+                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package&method={{ method_filter }}">
+                                <i class="fas fa-archive"></i> 下載{{ method_filter }}分析包
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header">分析輸出檔案</h6></li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="checkAndDownloadOutputs()">
+                                <i class="fas fa-folder-open"></i> 下載分析輸出資料夾
+                                <span id="outputs-status" class="badge bg-secondary ms-1">檢查中...</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showOutputsInfo()">
+                                <i class="fas fa-info-circle"></i> 查看輸出檔案清單
+                            </a>
+                        </li>
+                    </ul>
+                </div>
                 <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
                     <i class="fas fa-redo"></i> 重新分析
                 </a>
@@ -352,6 +401,32 @@
     </div>
 </div>
 
+<!-- 新增：輸出檔案資訊 Modal -->
+<div class="modal fade" id="outputsInfoModal" tabindex="-1">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-folder-open"></i> 分析輸出檔案清單</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="outputs-info-content">
+                    <div class="text-center">
+                        <div class="loading"></div>
+                        <p>載入檔案資訊中...</p>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
+                <button type="button" class="btn btn-success" onclick="downloadOutputsFromModal()">
+                    <i class="fas fa-download"></i> 下載全部
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- 新增：方法比較 Modal -->
 <div class="modal fade" id="methodComparisonModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
@@ -375,6 +450,159 @@
 
 {% block extra_js %}
 <script>
+// 檢查並初始化輸出檔案狀態
+document.addEventListener('DOMContentLoaded', function() {
+    checkOutputsStatus();
+});
+
+function checkOutputsStatus() {
+    const statusElement = document.getElementById('outputs-status');
+    if (!statusElement) return;
+    
+    fetch('{% url "liquefaction:outputs_info" project.pk %}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_outputs) {
+                statusElement.textContent = `${data.total_files} 個檔案`;
+                statusElement.className = 'badge bg-success ms-1';
+            } else {
+                statusElement.textContent = '無檔案';
+                statusElement.className = 'badge bg-warning ms-1';
+            }
+        })
+        .catch(error => {
+            console.error('檢查輸出狀態錯誤:', error);
+            statusElement.textContent = '檢查失敗';
+            statusElement.className = 'badge bg-danger ms-1';
+        });
+}
+
+function checkAndDownloadOutputs() {
+    fetch('{% url "liquefaction:outputs_info" project.pk %}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_outputs) {
+                // 有檔案，直接下載
+                window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+            } else {
+                // 沒有檔案，顯示提示
+                alert('沒有找到分析輸出檔案。\n\n可能原因：\n1. 分析尚未完成\n2. 分析過程中沒有生成額外的輸出檔案\n3. 輸出檔案已被清理');
+            }
+        })
+        .catch(error => {
+            console.error('檢查輸出檔案錯誤:', error);
+            alert('檢查輸出檔案時發生錯誤，請稍後再試');
+        });
+}
+
+function showOutputsInfo() {
+    const modal = new bootstrap.Modal(document.getElementById('outputsInfoModal'));
+    const content = document.getElementById('outputs-info-content');
+    
+    content.innerHTML = `
+        <div class="text-center">
+            <div class="loading"></div>
+            <p>載入檔案資訊中...</p>
+        </div>
+    `;
+    
+    modal.show();
+    
+    fetch('{% url "liquefaction:outputs_info" project.pk %}')
+        .then(response => response.json())
+        .then(data => {
+            if (data.has_outputs) {
+                let html = `
+                    <div class="alert alert-info">
+                        <i class="fas fa-info-circle"></i>
+                        找到 ${data.total_files} 個檔案，總大小：${formatFileSize(data.total_size)}
+                    </div>
+                `;
+                
+                data.directories.forEach(dir => {
+                    html += `
+                        <div class="card mb-3">
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="fas fa-folder"></i> ${dir.name}
+                                    <span class="badge bg-secondary ms-2">${dir.file_count} 個檔案</span>
+                                </h6>
+                            </div>
+                            <div class="card-body">
+                                <div class="table-responsive">
+                                    <table class="table table-sm">
+                                        <thead>
+                                            <tr>
+                                                <th>檔案名稱</th>
+                                                <th>路徑</th>
+                                                <th>大小</th>
+                                                <th>修改時間</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                    `;
+                    
+                    dir.files.forEach(file => {
+                        html += `
+                            <tr>
+                                <td><i class="fas fa-file"></i> ${file.name}</td>
+                                <td><small class="text-muted">${file.path}</small></td>
+                                <td>${formatFileSize(file.size)}</td>
+                                <td>${file.modified}</td>
+                            </tr>
+                        `;
+                    });
+                    
+                    html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+                
+                content.innerHTML = html;
+            } else {
+                content.innerHTML = `
+                    <div class="alert alert-warning">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        沒有找到分析輸出檔案
+                    </div>
+                    <p class="text-muted">可能原因：</p>
+                    <ul class="text-muted">
+                        <li>分析尚未完成</li>
+                        <li>分析過程中沒有生成額外的輸出檔案</li>
+                        <li>輸出檔案已被清理</li>
+                    </ul>
+                `;
+            }
+        })
+        .catch(error => {
+            console.error('載入輸出檔案資訊錯誤:', error);
+            content.innerHTML = `
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-circle"></i>
+                    載入檔案資訊時發生錯誤：${error.message}
+                </div>
+            `;
+        });
+}
+
+function downloadOutputsFromModal() {
+    window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+}
+
+function formatFileSize(bytes) {
+    if (bytes === 0) return '0 Bytes';
+    
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
 function showMethodComparison() {
     const modal = new bootstrap.Modal(document.getElementById('methodComparisonModal'));
     const content = document.getElementById('method-comparison-content');

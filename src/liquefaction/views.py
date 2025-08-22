@@ -10,6 +10,9 @@ import os
 from .models import AnalysisProject, BoreholeData, SoilLayer, AnalysisResult, Project
 from django.http import FileResponse, Http404
 from django.contrib.auth.decorators import login_required
+from datetime import datetime
+import glob
+from django.conf import settings
 
 def project_list(request):
     projects = Project.objects.all().order_by('-created_at')
@@ -1127,3 +1130,478 @@ def borehole_detail(request, pk, borehole_id):
     }
     
     return render(request, 'liquefaction/borehole_detail.html', context)
+
+# 在 views.py 中加入以下函數
+
+@login_required
+def download_analysis_outputs(request, pk):
+    """下載專案的分析輸出資料夾"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    try:
+        import tempfile
+        import zipfile
+        import shutil
+        import glob
+        from datetime import datetime
+        from django.http import FileResponse, Http404
+        from django.conf import settings
+        
+        # 尋找專案的輸出目錄
+        output_dirs = _find_project_output_directories(project)
+        
+        if not output_dirs:
+            messages.error(request, '找不到分析輸出檔案')
+            return redirect('liquefaction:results', pk=project.pk)
+        
+        # 創建臨時ZIP檔案
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_zip:
+            temp_zip_path = temp_zip.name
+        
+        try:
+            with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                total_files = 0
+                
+                for output_dir in output_dirs:
+                    if os.path.exists(output_dir):
+                        print(f"正在打包目錄：{output_dir}")
+                        
+                        # 取得目錄名稱作為ZIP內的根目錄
+                        dir_name = os.path.basename(output_dir)
+                        
+                        # 遞歸添加目錄中的所有檔案
+                        for root, dirs, files in os.walk(output_dir):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                # 計算在ZIP中的相對路徑
+                                arcname = os.path.relpath(file_path, os.path.dirname(output_dir))
+                                zipf.write(file_path, arcname)
+                                total_files += 1
+                                print(f"  添加檔案：{arcname}")
+                
+                if total_files == 0:
+                    messages.warning(request, '分析輸出目錄中沒有檔案')
+                    os.unlink(temp_zip_path)
+                    return redirect('liquefaction:results', pk=project.pk)
+                
+                print(f"總共打包了 {total_files} 個檔案")
+            
+            # 生成下載檔名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            download_filename = f"{project.name}_分析輸出_{timestamp}.zip"
+            
+            # 返回檔案響應
+            response = FileResponse(
+                open(temp_zip_path, 'rb'),
+                as_attachment=True,
+                filename=download_filename
+            )
+            response['Content-Type'] = 'application/zip'
+            
+            # 註冊清理函數（當響應完成後刪除臨時檔案）
+            def cleanup_temp_file():
+                try:
+                    os.unlink(temp_zip_path)
+                    print(f"已清理臨時檔案：{temp_zip_path}")
+                except:
+                    pass
+            
+            # 這裡我們不能直接清理，因為檔案還在使用中
+            # 可以考慮使用後台任務來清理，或者依賴系統的臨時檔案清理
+            
+            return response
+            
+        except Exception as e:
+            # 清理臨時檔案
+            if os.path.exists(temp_zip_path):
+                os.unlink(temp_zip_path)
+            raise e
+            
+    except Exception as e:
+        messages.error(request, f'下載分析輸出時發生錯誤：{str(e)}')
+        return redirect('liquefaction:results', pk=project.pk)
+
+# 修改 views.py 中的 _find_project_output_directories 函數
+
+# 替換 views.py 中的 _find_project_output_directories 函數
+
+def _find_project_output_directories(project):
+    """直接搜尋專案相關檔案 - 簡化版本"""
+    import glob
+    from django.conf import settings
+    
+    output_dirs = []
+    found_files = []
+    
+    try:
+        analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
+                                      os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
+        
+        print(f"🔍 直接搜尋檔案，根路徑：{analysis_output_root}")
+        
+        if not os.path.exists(analysis_output_root):
+            print(f"❌ 分析輸出根目錄不存在：{analysis_output_root}")
+            return []
+        
+        # 取得專案ID的前8位字符用於匹配
+        project_id_short = str(project.id)[:8]
+        
+        print(f"🔍 搜尋專案ID開頭：{project_id_short}")
+        
+        # 直接遞歸搜尋所有相關檔案
+        search_patterns = [
+            f"**/*{project_id_short}*",  # 包含專案ID的任何檔案
+            f"**/*HBF*.csv",            # HBF相關CSV檔案  
+            f"**/*LPI*.csv",            # LPI相關CSV檔案
+            f"**/*{project.name}*",     # 包含專案名稱的檔案
+        ]
+        
+        for pattern in search_patterns:
+            search_path = os.path.join(analysis_output_root, pattern)
+            matching_files = glob.glob(search_path, recursive=True)
+            
+            for file_path in matching_files:
+                if os.path.isfile(file_path):
+                    # 檢查檔案名是否真的與專案相關
+                    file_name = os.path.basename(file_path)
+                    
+                    # 更寬鬆的匹配條件
+                    is_relevant = any([
+                        project_id_short in file_name,
+                        project.name in file_name,
+                        any(keyword in file_name.lower() for keyword in ['hbf', 'lpi', 'design', 'mideq', 'maxeq'])
+                    ])
+                    
+                    if is_relevant:
+                        found_files.append(file_path)
+                        parent_dir = os.path.dirname(file_path)
+                        
+                        if parent_dir not in output_dirs:
+                            output_dirs.append(parent_dir)
+                            print(f"✅ 找到相關檔案：{file_name}")
+                            print(f"   所在目錄：{parent_dir}")
+        
+        # 去重並排序
+        output_dirs = list(set(output_dirs))
+        
+        print(f"🎯 總共找到 {len(found_files)} 個相關檔案")
+        print(f"🎯 涉及 {len(output_dirs)} 個目錄")
+        
+        # 如果沒找到任何目錄但有檔案，至少返回根目錄
+        if not output_dirs and found_files:
+            output_dirs = [analysis_output_root]
+        
+        return output_dirs
+        
+    except Exception as e:
+        print(f"❌ 搜尋檔案時發生錯誤：{e}")
+        import traceback
+        print(traceback.format_exc())
+        return []
+
+# 同時簡化 get_analysis_outputs_info 函數
+
+@login_required 
+def get_analysis_outputs_info(request, pk):
+    """取得分析輸出資訊 - 直接檔案搜尋版本"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    try:
+        print(f"🔍 開始直接搜尋專案檔案：{project.name} (ID前8位: {str(project.id)[:8]})")
+        
+        from django.conf import settings
+        import glob
+        
+        analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
+                                      os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
+        
+        project_id_short = str(project.id)[:8]
+        all_found_files = []
+        
+        # 直接搜尋相關檔案
+        search_patterns = [
+            f"**/*{project_id_short}*",
+            f"**/*HBF*{datetime.now().strftime('%m%d')}*.csv",  # 今天產生的HBF檔案
+            f"**/*LPI*{datetime.now().strftime('%m%d')}*.csv",  # 今天產生的LPI檔案
+        ]
+        
+        for pattern in search_patterns:
+            search_path = os.path.join(analysis_output_root, pattern)
+            matching_files = glob.glob(search_path, recursive=True)
+            
+            for file_path in matching_files:
+                if os.path.isfile(file_path):
+                    file_name = os.path.basename(file_path)
+                    
+                    # 檢查是否為相關檔案
+                    is_relevant = any([
+                        project_id_short in file_name,
+                        any(keyword in file_name.lower() for keyword in ['hbf', 'lpi', 'design', 'mideq', 'maxeq'])
+                    ])
+                    
+                    if is_relevant and file_path not in all_found_files:
+                        all_found_files.append(file_path)
+                        print(f"📄 找到檔案：{file_name}")
+        
+        output_info = {
+            'has_outputs': len(all_found_files) > 0,
+            'directories': [],
+            'total_files': len(all_found_files),
+            'total_size': 0,
+            'debug_info': {
+                'project_id': str(project.id),
+                'project_id_short': project_id_short,
+                'project_name': project.name,
+                'found_files_count': len(all_found_files),
+                'analysis_output_root': analysis_output_root
+            }
+        }
+        
+        if all_found_files:
+            # 按目錄分組檔案
+            dirs_dict = {}
+            
+            for file_path in all_found_files:
+                dir_path = os.path.dirname(file_path)
+                dir_name = os.path.basename(dir_path) if dir_path != analysis_output_root else "根目錄"
+                
+                if dir_name not in dirs_dict:
+                    dirs_dict[dir_name] = {
+                        'path': dir_path,
+                        'name': dir_name,
+                        'files': [],
+                        'file_count': 0,
+                        'size': 0
+                    }
+                
+                try:
+                    file_size = os.path.getsize(file_path)
+                    file_modified = os.path.getmtime(file_path)
+                    
+                    dirs_dict[dir_name]['files'].append({
+                        'name': os.path.basename(file_path),
+                        'path': os.path.relpath(file_path, dir_path),
+                        'size': file_size,
+                        'modified': datetime.fromtimestamp(file_modified).strftime('%Y-%m-%d %H:%M:%S')
+                    })
+                    
+                    dirs_dict[dir_name]['size'] += file_size
+                    dirs_dict[dir_name]['file_count'] += 1
+                    output_info['total_size'] += file_size
+                    
+                except OSError as e:
+                    print(f"⚠️ 無法讀取檔案 {file_path}: {e}")
+                    continue
+            
+            output_info['directories'] = list(dirs_dict.values())
+        
+        print(f"🎯 API回應：找到 {output_info['total_files']} 個檔案")
+        
+        return JsonResponse(output_info)
+        
+    except Exception as e:
+        print(f"❌ 取得輸出資訊時發生錯誤：{e}")
+        import traceback
+        print(traceback.format_exc())
+        
+        return JsonResponse({
+            'error': str(e),
+            'has_outputs': False,
+            'debug_info': {
+                'project_id': str(project.id),
+                'project_name': project.name,
+                'error_details': str(e)
+            }
+        })
+# 同時修改 get_analysis_outputs_info 函數，增加更詳細的偵錯資訊
+
+@login_required 
+def get_analysis_outputs_info(request, pk):
+    """取得分析輸出資訊的API端點 - 增強版本"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    try:
+        print(f"🔍 開始查找專案輸出檔案：{project.name} (ID: {project.id})")
+        
+        output_dirs = _find_project_output_directories(project)
+        
+        output_info = {
+            'has_outputs': len(output_dirs) > 0,
+            'directories': [],
+            'total_files': 0,
+            'total_size': 0,
+            'debug_info': {
+                'project_id': str(project.id),
+                'project_name': project.name,
+                'searched_dirs': len(output_dirs),
+                'analysis_output_root': getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 'Not set')
+            }
+        }
+        
+        for output_dir in output_dirs:
+            if os.path.exists(output_dir):
+                print(f"📁 處理目錄：{output_dir}")
+                
+                dir_info = {
+                    'path': output_dir,
+                    'name': os.path.basename(output_dir),
+                    'files': [],
+                    'file_count': 0,
+                    'size': 0
+                }
+                
+                # 列出目錄中的檔案
+                for root, dirs, files in os.walk(output_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        relative_path = os.path.relpath(file_path, output_dir)
+                        
+                        try:
+                            file_size = os.path.getsize(file_path)
+                            file_modified = os.path.getmtime(file_path)
+                            
+                            dir_info['files'].append({
+                                'name': file,
+                                'path': relative_path,
+                                'size': file_size,
+                                'modified': datetime.fromtimestamp(file_modified).strftime('%Y-%m-%d %H:%M:%S')
+                            })
+                            
+                            dir_info['size'] += file_size
+                            dir_info['file_count'] += 1
+                            print(f"📄 找到檔案：{file} ({file_size} bytes)")
+                            
+                        except OSError as e:
+                            print(f"⚠️ 無法讀取檔案 {file}: {e}")
+                            continue
+                
+                if dir_info['file_count'] > 0:
+                    output_info['directories'].append(dir_info)
+                    output_info['total_files'] += dir_info['file_count']
+                    output_info['total_size'] += dir_info['size']
+                    print(f"✅ 目錄 {output_dir} 包含 {dir_info['file_count']} 個檔案")
+                else:
+                    print(f"⚠️ 目錄 {output_dir} 沒有檔案")
+        
+        print(f"🎯 總結果：{output_info['total_files']} 個檔案，總大小 {output_info['total_size']} bytes")
+        
+        return JsonResponse(output_info)
+        
+    except Exception as e:
+        print(f"❌ 取得輸出資訊時發生錯誤：{e}")
+        import traceback
+        print(traceback.format_exc())
+        
+        return JsonResponse({
+            'error': str(e),
+            'has_outputs': False,
+            'debug_info': {
+                'project_id': str(project.id),
+                'project_name': project.name,
+                'error_details': traceback.format_exc()
+            }
+        })
+
+# 也修改 download_analysis_outputs 函數，增加更好的錯誤處理
+
+@login_required
+def download_analysis_outputs(request, pk):
+    """下載專案的分析輸出資料夾 - 改進版本"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    try:
+        import tempfile
+        import zipfile
+        from datetime import datetime
+        from django.http import FileResponse
+        
+        print(f"🔍 開始準備下載專案輸出：{project.name}")
+        
+        # 尋找專案的輸出目錄
+        output_dirs = _find_project_output_directories(project)
+        
+        if not output_dirs:
+            messages.error(request, '找不到分析輸出檔案。請檢查分析是否已完成，或檔案是否已被清理。')
+            return redirect('liquefaction:results', pk=project.pk)
+        
+        # 創建臨時ZIP檔案
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_zip:
+            temp_zip_path = temp_zip.name
+        
+        try:
+            total_files = 0
+            
+            with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                for output_dir in output_dirs:
+                    if os.path.exists(output_dir):
+                        print(f"📁 正在打包目錄：{output_dir}")
+                        
+                        # 取得目錄名稱作為ZIP內的根目錄
+                        dir_name = os.path.basename(output_dir) if output_dir != os.path.dirname(output_dir) else "analysis_outputs"
+                        
+                        # 遞歸添加目錄中的所有檔案
+                        for root, dirs, files in os.walk(output_dir):
+                            for file in files:
+                                file_path = os.path.join(root, file)
+                                
+                                # 計算在ZIP中的相對路徑
+                                if root == output_dir:
+                                    # 檔案在根目錄
+                                    arcname = os.path.join(dir_name, file)
+                                else:
+                                    # 檔案在子目錄
+                                    rel_path = os.path.relpath(file_path, output_dir)
+                                    arcname = os.path.join(dir_name, rel_path)
+                                
+                                zipf.write(file_path, arcname)
+                                total_files += 1
+                                print(f"📄 添加檔案：{arcname}")
+            
+            if total_files == 0:
+                messages.warning(request, '分析輸出目錄中沒有檔案')
+                os.unlink(temp_zip_path)
+                return redirect('liquefaction:results', pk=project.pk)
+            
+            print(f"✅ 總共打包了 {total_files} 個檔案")
+            
+            # 生成下載檔名
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            download_filename = f"{project.name}_分析輸出_{timestamp}.zip"
+            
+            # 返回檔案響應
+            response = FileResponse(
+                open(temp_zip_path, 'rb'),
+                as_attachment=True,
+                filename=download_filename
+            )
+            response['Content-Type'] = 'application/zip'
+            
+            print(f"🎯 開始下載：{download_filename}")
+            return response
+            
+        except Exception as e:
+            # 清理臨時檔案
+            if os.path.exists(temp_zip_path):
+                os.unlink(temp_zip_path)
+            raise e
+            
+    except Exception as e:
+        print(f"❌ 下載分析輸出時發生錯誤：{e}")
+        import traceback
+        print(traceback.format_exc())
+        
+        messages.error(request, f'下載分析輸出時發生錯誤：{str(e)}')
+        return redirect('liquefaction:results', pk=project.pk)
+
+def _format_file_size(size_bytes):
+    """格式化檔案大小"""
+    if size_bytes == 0:
+        return "0 B"
+    
+    size_names = ["B", "KB", "MB", "GB"]
+    i = 0
+    while size_bytes >= 1024 and i < len(size_names) - 1:
+        size_bytes /= 1024.0
+        i += 1
+    
+    return f"{size_bytes:.1f} {size_names[i]}"

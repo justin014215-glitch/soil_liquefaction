@@ -127,6 +127,56 @@ class AnalysisProject(models.Model):
     def has_fault_data(self):
         """檢查是否有可用的斷層數據"""
         return self.get_fault_shapefile_path() is not None
+    
+    def get_output_directory(self):
+        """獲取專案輸出目錄"""
+        from django.conf import settings
+        safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
+        dir_name = f"{self.id}_{safe_name}_{self.analysis_method or 'HBF'}"
+        
+        analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
+                                      os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
+        return os.path.join(analysis_output_root, dir_name)
+
+    def list_output_files(self):
+        """列出專案的所有輸出檔案"""
+        output_dir = self.get_output_directory()
+        if not os.path.exists(output_dir):
+            return []
+        
+        files = []
+        for root, dirs, filenames in os.walk(output_dir):
+            for filename in filenames:
+                file_path = os.path.join(root, filename)
+                relative_path = os.path.relpath(file_path, output_dir)
+                
+                try:
+                    file_info = {
+                        'name': filename,
+                        'relative_path': relative_path,
+                        'full_path': file_path,
+                        'size': os.path.getsize(file_path),
+                        'modified': datetime.fromtimestamp(os.path.getmtime(file_path))
+                    }
+                    files.append(file_info)
+                except OSError:
+                    continue
+        
+        return sorted(files, key=lambda x: x['modified'], reverse=True)
+
+    def has_output_files(self):
+        """檢查是否有輸出檔案"""
+        return len(self.list_output_files()) > 0
+
+    def cleanup_output_files(self):
+        """清理專案的輸出檔案"""
+        output_dir = self.get_output_directory()
+        if os.path.exists(output_dir):
+            import shutil
+            shutil.rmtree(output_dir)
+            print(f"已清理專案 {self.name} 的輸出檔案：{output_dir}")
+
+
 # 其他模型保持不變...
 class BoreholeData(models.Model):
     """鑽孔資料模型"""
