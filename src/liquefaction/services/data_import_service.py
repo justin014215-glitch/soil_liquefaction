@@ -88,16 +88,12 @@ class DataImportService:
                 'errors': []
             }
     
+    # 在 data_import_service.py 中的 _import_to_database 方法更新版本
+
     @transaction.atomic
     def _import_to_database(self, parsed_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        將解析的資料匯入資料庫
-        
-        Args:
-            parsed_data: 解析後的資料
-            
-        Returns:
-            匯入結果
+        將解析的資料匯入資料庫 - 支援擴展字段
         """
         try:
             # 清除專案的舊資料
@@ -166,7 +162,7 @@ class DataImportService:
                     errors.append(error_msg)
                     logger.error(error_msg)
             
-            # 匯入土層資料
+            # 匯入土層資料 - 支援新字段
             for layer_data in parsed_data['soil_layers']:
                 try:
                     borehole = BoreholeData.objects.get(
@@ -174,22 +170,50 @@ class DataImportService:
                         borehole_id=layer_data['borehole_id']
                     )
                     
-                    soil_layer = SoilLayer.objects.create(
-                        borehole=borehole,
-                        top_depth=layer_data['top_depth'],
-                        bottom_depth=layer_data['bottom_depth'],
-                        sample_id=layer_data.get('sample_id', ''),
-                        uscs=layer_data.get('uscs', ''),
-                        spt_n=layer_data.get('spt_n'),
-                        unit_weight=layer_data.get('unit_weight'),
-                        water_content=layer_data.get('water_content'),
-                        gravel_percent=layer_data.get('gravel_percent'),
-                        sand_percent=layer_data.get('sand_percent'),
-                        silt_percent=layer_data.get('silt_percent'),
-                        clay_percent=layer_data.get('clay_percent'),
-                        fines_content=layer_data.get('fines_content'),
-                        plastic_index=layer_data.get('plastic_index')
-                    )
+                    # 準備土層資料，包含所有新字段
+                    soil_layer_data = {
+                        'borehole': borehole,
+                        # 基本資訊
+                        'project_name': layer_data.get('project_name', ''),
+                        'borehole_id_ref': layer_data.get('borehole_id', ''),
+                        'test_number': layer_data.get('test_number', ''),
+                        'sample_id': layer_data.get('sample_id', ''),
+                        # 深度資訊
+                        'top_depth': layer_data.get('top_depth'),
+                        'bottom_depth': layer_data.get('bottom_depth'),
+                        # SPT資料
+                        'spt_n': layer_data.get('spt_n'),
+                        'n_value': layer_data.get('n_value') or layer_data.get('spt_n'),  # n_value優先，否則使用spt_n
+                        # 土壤分類
+                        'uscs': layer_data.get('uscs', ''),
+                        # 物理性質
+                        'water_content': layer_data.get('water_content'),
+                        'liquid_limit': layer_data.get('liquid_limit'),
+                        'plastic_index': layer_data.get('plastic_index'),
+                        'specific_gravity': layer_data.get('specific_gravity'),
+                        # 粒徑分析
+                        'gravel_percent': layer_data.get('gravel_percent'),
+                        'sand_percent': layer_data.get('sand_percent'),
+                        'silt_percent': layer_data.get('silt_percent'),
+                        'clay_percent': layer_data.get('clay_percent'),
+                        'fines_content': layer_data.get('fines_content'),
+                        # 密度相關
+                        'unit_weight': layer_data.get('unit_weight'),
+                        'bulk_density': layer_data.get('bulk_density'),
+                        'void_ratio': layer_data.get('void_ratio'),
+                        # 粒徑分佈參數
+                        'd10': layer_data.get('d10'),
+                        'd30': layer_data.get('d30'),
+                        'd60': layer_data.get('d60'),
+                        # 座標和高程（冗餘資料，會在save()中自動填充）
+                        'twd97_x': layer_data.get('twd97_x'),
+                        'twd97_y': layer_data.get('twd97_y'),
+                        'water_depth': layer_data.get('water_depth'),
+                        'ground_elevation': layer_data.get('ground_elevation'),
+                    }
+                    
+                    # 創建土層物件
+                    soil_layer = SoilLayer.objects.create(**soil_layer_data)
                     imported_layers += 1
                     
                 except BoreholeData.DoesNotExist:
@@ -233,8 +257,7 @@ class DataImportService:
                 'success': False,
                 'error': str(e),
                 'errors': errors
-            }
-    
+            }  
     def validate_imported_data(self) -> Dict[str, Any]:
         """
         驗證已匯入的資料

@@ -59,25 +59,42 @@ class BoreholeDataAdmin(admin.ModelAdmin):
 
 @admin.register(SoilLayer)
 class SoilLayerAdmin(admin.ModelAdmin):
-    list_display = ('borehole', 'top_depth', 'bottom_depth', 'uscs', 'spt_n', 'thickness')
-    list_filter = ('borehole__project', 'uscs')
-    search_fields = ('borehole__borehole_id', 'sample_id', 'uscs')
-    readonly_fields = ('created_at',)
+    list_display = ('borehole', 'test_number', 'sample_id', 'top_depth', 'bottom_depth', 'uscs', 'spt_n', 'thickness')
+    list_filter = ('borehole__project', 'uscs', 'project_name')
+    search_fields = ('borehole__borehole_id', 'sample_id', 'test_number', 'uscs')
+    readonly_fields = ('created_at', 'thickness', 'project_name', 'borehole_id_ref', 'twd97_x', 'twd97_y')
+    
     fieldsets = (
         ('基本資訊', {
-            'fields': ('borehole', 'top_depth', 'bottom_depth', 'sample_id', 'uscs')
+            'fields': ('borehole', 'project_name', 'borehole_id_ref', 'test_number', 'sample_id')
+        }),
+        ('深度資訊', {
+            'fields': ('top_depth', 'bottom_depth')
         }),
         ('SPT資料', {
-            'fields': ('spt_n',)
+            'fields': ('spt_n', 'n_value')
+        }),
+        ('土壤分類', {
+            'fields': ('uscs',)
         }),
         ('物理性質', {
-            'fields': ('unit_weight', 'water_content')
+            'fields': ('water_content', 'liquid_limit', 'plastic_index', 'specific_gravity')
         }),
         ('粒徑分析', {
-            'fields': ('gravel_percent', 'sand_percent', 'silt_percent', 'clay_percent', 'fines_content')
+            'fields': ('gravel_percent', 'sand_percent', 'silt_percent', 'clay_percent', 'fines_content'),
+            'classes': ('collapse',)
         }),
-        ('塑性指數', {
-            'fields': ('plastic_index',)
+        ('密度相關', {
+            'fields': ('unit_weight', 'bulk_density', 'void_ratio'),
+            'classes': ('collapse',)
+        }),
+        ('粒徑分佈參數', {
+            'fields': ('d10', 'd30', 'd60'),
+            'classes': ('collapse',)
+        }),
+        ('座標和高程資訊', {
+            'fields': ('twd97_x', 'twd97_y', 'water_depth', 'ground_elevation'),
+            'classes': ('collapse',)
         }),
         ('時間戳記', {
             'fields': ('created_at',),
@@ -88,7 +105,13 @@ class SoilLayerAdmin(admin.ModelAdmin):
     def thickness(self, obj):
         return f"{obj.thickness:.2f}m"
     thickness.short_description = '土層厚度'
-
+    
+    def get_queryset(self, request):
+        """優化查詢以減少資料庫查詢次數"""
+        return super().get_queryset(request).select_related(
+            'borehole', 
+            'borehole__project'
+        )
 
 @admin.register(AnalysisResult)
 class AnalysisResultAdmin(admin.ModelAdmin):

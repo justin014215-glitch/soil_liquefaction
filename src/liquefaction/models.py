@@ -178,36 +178,55 @@ class BoreholeData(models.Model):
 
 
 class SoilLayer(models.Model):
-    """土層資料模型"""
+    """土層資料模型 - 擴展版本"""
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     borehole = models.ForeignKey(BoreholeData, on_delete=models.CASCADE, related_name='soil_layers', verbose_name="所屬鑽孔")
+    
+    # 基本資訊
+    project_name = models.CharField(max_length=200, blank=True, verbose_name="計畫名稱")
+    borehole_id_ref = models.CharField(max_length=100, blank=True, verbose_name="鑽孔編號參考")  # 冗餘，但方便查詢
+    test_number = models.CharField(max_length=50, blank=True, verbose_name="試驗編號")
+    sample_id = models.CharField(max_length=50, blank=True, verbose_name="取樣編號")
     
     # 深度資訊
     top_depth = models.FloatField(verbose_name="上限深度 (m)")
     bottom_depth = models.FloatField(verbose_name="下限深度 (m)")
     
-    # 取樣資訊
-    sample_id = models.CharField(max_length=50, blank=True, verbose_name="取樣編號")
+    # SPT資料
+    spt_n = models.FloatField(null=True, blank=True, verbose_name="SPT-N值")
+    n_value = models.FloatField(null=True, blank=True, verbose_name="N_value")  # 可能與spt_n相同
     
     # 土壤分類
     uscs = models.CharField(max_length=10, blank=True, verbose_name="統一土壤分類")
     
-    # SPT資料
-    spt_n = models.FloatField(null=True, blank=True, verbose_name="SPT-N值")
-    
     # 物理性質
-    unit_weight = models.FloatField(null=True, blank=True, verbose_name="統體單位重 (t/m³)")
     water_content = models.FloatField(null=True, blank=True, verbose_name="含水量 (%)")
+    liquid_limit = models.FloatField(null=True, blank=True, verbose_name="液性限度 (%)")
+    plastic_index = models.FloatField(null=True, blank=True, verbose_name="塑性指數 (%)")
+    specific_gravity = models.FloatField(null=True, blank=True, verbose_name="比重")
     
     # 粒徑分析
     gravel_percent = models.FloatField(null=True, blank=True, verbose_name="礫石含量 (%)")
     sand_percent = models.FloatField(null=True, blank=True, verbose_name="砂土含量 (%)")
     silt_percent = models.FloatField(null=True, blank=True, verbose_name="粉土含量 (%)")
     clay_percent = models.FloatField(null=True, blank=True, verbose_name="黏土含量 (%)")
-    fines_content = models.FloatField(null=True, blank=True, verbose_name="細料含量 (%)")
+    fines_content = models.FloatField(null=True, blank=True, verbose_name="細料含量 (%)")  # 保留原有
     
-    # 塑性指數
-    plastic_index = models.FloatField(null=True, blank=True, verbose_name="塑性指數 (%)")
+    # 密度相關
+    unit_weight = models.FloatField(null=True, blank=True, verbose_name="統體單位重 (t/m³)")
+    bulk_density = models.FloatField(null=True, blank=True, verbose_name="統體密度 (t/m³)")
+    void_ratio = models.FloatField(null=True, blank=True, verbose_name="空隙比")
+    
+    # 粒徑分佈參數
+    d10 = models.FloatField(null=True, blank=True, verbose_name="D10 (mm)")
+    d30 = models.FloatField(null=True, blank=True, verbose_name="D30 (mm)")
+    d60 = models.FloatField(null=True, blank=True, verbose_name="D60 (mm)")
+    
+    # 座標和高程資訊（冗餘，但方便查詢）
+    twd97_x = models.FloatField(null=True, blank=True, verbose_name="TWD97_X")
+    twd97_y = models.FloatField(null=True, blank=True, verbose_name="TWD97_Y")
+    water_depth = models.FloatField(null=True, blank=True, verbose_name="地下水位深度 (m)")
+    ground_elevation = models.FloatField(null=True, blank=True, verbose_name="鑽孔地表高程 (m)")
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="建立時間")
     
@@ -223,7 +242,29 @@ class SoilLayer(models.Model):
     def thickness(self):
         """土層厚度"""
         return self.bottom_depth - self.top_depth
-
+    
+    def save(self, *args, **kwargs):
+        """保存時自動填充一些冗餘字段"""
+        if self.borehole:
+            # 自動填充計畫名稱
+            if not self.project_name:
+                self.project_name = self.borehole.project.name
+            
+            # 自動填充鑽孔編號參考
+            if not self.borehole_id_ref:
+                self.borehole_id_ref = self.borehole.borehole_id
+            
+            # 自動填充座標資訊
+            if not self.twd97_x:
+                self.twd97_x = self.borehole.twd97_x
+            if not self.twd97_y:
+                self.twd97_y = self.borehole.twd97_y
+            if not self.water_depth:
+                self.water_depth = self.borehole.water_depth
+            if not self.ground_elevation:
+                self.ground_elevation = self.borehole.surface_elevation
+        
+        super().save(*args, **kwargs)
 
 class AnalysisResult(models.Model):
     """液化分析結果模型"""
