@@ -245,6 +245,9 @@ class SoilLayer(models.Model):
     
     def save(self, *args, **kwargs):
         """保存時自動填充一些冗餘字段"""
+        # 若 n_value 尚未設定但 spt_n 有值，自動將 n_value 設為 spt_n
+        if self.n_value is None and self.spt_n is not None:
+            self.n_value = self.spt_n
         if self.borehole:
             # 自動填充計畫名稱
             if not self.project_name:
