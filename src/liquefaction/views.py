@@ -438,16 +438,30 @@ def analyze(request, pk):
             
             for method in selected_methods:
                 print(f"開始執行 {method} 分析...")
+                
+                # 只建立一次分析引擎，並傳入指定的方法
                 analysis_engine = LiquefactionAnalysisEngine(project, analysis_method=method)
                 analysis_result = analysis_engine.run_analysis()
-
-                # 暫時更新專案的分析方法
-                project.analysis_method = method
-                project.save()
                 
-                # 創建分析引擎並執行分析
-                analysis_engine = LiquefactionAnalysisEngine(project)
-                analysis_result = analysis_engine.run_analysis()
+                print(f"{method} 分析結果: {analysis_result}")
+                
+                if analysis_result['success']:
+                    total_success += 1
+                    messages.success(
+                        request, 
+                        f'{method} 分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層。'
+                    )
+                    
+                    # 顯示警告訊息
+                    for warning in analysis_result.get('warnings', []):
+                        messages.warning(request, f'{method} 警告：{warning}')
+                else:
+                    total_errors.append(f'{method}: {analysis_result["error"]}')
+                    messages.error(request, f'{method} 分析失敗：{analysis_result["error"]}')
+                    
+                    # 顯示詳細錯誤
+                    for error in analysis_result.get('errors', []):
+                        messages.error(request, f'{method} 錯誤：{error}')
                 
                 print(f"{method} 分析結果: {analysis_result}")
                 

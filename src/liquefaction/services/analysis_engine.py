@@ -486,3 +486,4 @@ class LiquefactionAnalysisEngine:
             logger.error(f"儲存分析結果到資料庫時發生嚴重錯誤: {str(e)}")
             # 重新拋出錯誤，讓上層處理
             raise        
+         
