@@ -112,7 +112,9 @@ def project_create(request):
                 # 立即處理 CSV 檔案
                 from .services.data_import_service import DataImportService
                 import_service = DataImportService(project)
-                import_result = import_service.import_csv_data(request.FILES['source_file'])
+
+                import_result = import_service.import_csv_data(request.FILES['source_file'],
+                                                               unit_weight_unit=unit_weight_unit )
                 
                 if import_result['success']:
                     summary = import_result['summary']
@@ -338,7 +340,9 @@ def file_upload(request, pk):
             # 使用 DataImportService 匯入資料
             from .services.data_import_service import DataImportService
             import_service = DataImportService(project)
-            import_result = import_service.import_csv_data(csv_file)
+            import_result = import_service.import_csv_data(
+                csv_file,
+                unit_weight_unit=project.unit_weight_unit)
             
             if import_result['success']:
                 # 匯入成功
@@ -347,7 +351,16 @@ def file_upload(request, pk):
                     request, 
                     f'CSV 檔案上傳成功！已匯入 {summary["imported_boreholes"]} 個鑽孔，{summary["imported_layers"]} 個土層。'
                 )
+                # 新增：顯示單位檢測結果
+                if 'detected_unit' in import_result and import_result['detected_unit']:
+                    if import_result.get('unit_consistency', True):
+                        messages.info(request, f'✓ 統體單位重單位檢測：{import_result["detected_unit"]}（與專案設定一致）')
+                    else:
+                        messages.warning(request, f'⚠️ 統體單位重單位檢測：{import_result["detected_unit"]}（與專案設定 {project.unit_weight_unit} 不一致）')
                 
+                # 顯示警告訊息
+                for warning in import_result.get('warnings', []):
+                    messages.warning(request, f'警告：{warning}')
                 # 顯示警告訊息（如果有）
                 for warning in import_result.get('warnings', []):
                     messages.warning(request, f'警告：{warning}')
@@ -598,13 +611,13 @@ def results(request, pk):
         results = results.filter(analysis_method=method_filter)
         print(f"🔍 篩選方法: {method_filter}, 結果數量: {results.count()}")
     
-    safety_filter = request.GET.get('safety', '')
-    if safety_filter == 'danger':
-        results = results.filter(fs_design__lt=1.0)
-    elif safety_filter == 'warning':
-        results = results.filter(fs_design__gte=1.0, fs_design__lt=1.3)
-    elif safety_filter == 'safe':
-        results = results.filter(fs_design__gte=1.3)
+    lpi_filter = request.GET.get('lpi', '')
+    if lpi_filter == 'low':
+        results = results.filter(lpi_design__lt=5.0)
+    elif lpi_filter == 'medium':
+        results = results.filter(lpi_design__gte=5.0, lpi_design__lte=15.0)
+    elif lpi_filter == 'high':
+        results = results.filter(lpi_design__gt=15.0)
     
     print(f"🔍 最終結果數量: {results.count()}")
     
@@ -613,6 +626,7 @@ def results(request, pk):
         'results': results,
         'available_methods': available_methods_display,
         'method_filter': method_filter,
+        'lpi_filter': lpi_filter,  
     }
     
     return render(request, 'liquefaction/results.html', context)

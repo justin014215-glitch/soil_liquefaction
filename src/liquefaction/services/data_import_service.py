@@ -20,7 +20,7 @@ class DataImportService:
         self.parser = CSVParser()
         self.import_summary = {}
     
-    def import_csv_data(self, csv_file: UploadedFile) -> Dict[str, Any]:
+    def import_csv_data(self, csv_file: UploadedFile, unit_weight_unit: str = None) -> Dict[str, Any]:
         """
         匯入 CSV 資料
         
@@ -31,6 +31,9 @@ class DataImportService:
             匯入結果
         """
         try:
+            # 確定使用的單位重單位
+            if unit_weight_unit is None:
+                unit_weight_unit = self.project.unit_weight_unit
             # 建立臨時檔案
             with tempfile.NamedTemporaryFile(mode='wb', suffix='.csv', delete=False) as temp_file:
                 for chunk in csv_file.chunks():
@@ -39,6 +42,7 @@ class DataImportService:
             
             try:
                 # 解析 CSV 檔案
+                parser = CSVParser(unit_weight_unit=unit_weight_unit)
                 parse_result = self.parser.parse_csv(temp_file_path)
                 
                 if not parse_result['success']:
@@ -66,7 +70,9 @@ class DataImportService:
                     'success': import_result['success'],
                     'summary': self.import_summary,
                     'warnings': parse_result.get('warnings', []),
-                    'errors': parse_result.get('errors', []) + import_result.get('errors', [])
+                    'errors': parse_result.get('errors', []) + import_result.get('errors', []),
+                    'detected_unit': parse_result.get('detected_unit'),  # 新增
+                    'unit_consistency': parse_result.get('unit_consistency', True)  # 新增
                 }
                 
                 if not import_result['success']:

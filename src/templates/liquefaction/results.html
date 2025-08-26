@@ -210,12 +210,12 @@
                         </select>
                     </div>
                     <div class="col-md-2">
-                        <label for="safety_filter" class="form-label">安全係數篩選</label>
-                        <select class="form-select" id="safety_filter" name="safety">
+                        <label for="lpi_filter" class="form-label">LPI篩選</label>
+                        <select class="form-select" id="lpi_filter" name="lpi">
                             <option value="">全部</option>
-                            <option value="danger" {% if request.GET.safety == 'danger' %}selected{% endif %}>危險 (FS < 1.0)</option>
-                            <option value="warning" {% if request.GET.safety == 'warning' %}selected{% endif %}>警告 (1.0 ≤ FS < 1.3)</option>
-                            <option value="safe" {% if request.GET.safety == 'safe' %}selected{% endif %}>安全 (FS ≥ 1.3)</option>
+                            <option value="low" {% if request.GET.lpi == 'low' %}selected{% endif %}>低 (LPI < 5)</option>
+                            <option value="medium" {% if request.GET.lpi == 'medium' %}selected{% endif %}>中 (5 ≤ LPI ≤ 15)</option>
+                            <option value="high" {% if request.GET.lpi == 'high' %}selected{% endif %}>高 (LPI > 15)</option>
                         </select>
                     </div>
                     <div class="col-md-2">
@@ -291,7 +291,7 @@
                                 <th>CSR</th><th>CRR</th><th>FS</th>
                                 <th>CSR</th><th>CRR</th><th>FS</th>
                                 {% else %}
-                                <th>Mw</th><th>amax(g)</th><th>CSR</th><th>CRR</th><th>FS</th><th>LPI</th>
+                                <th>Mw</th><th>Amax(g)</th><th>CSR</th><th>CRR</th><th>FS</th><th>LPI</th>
                                 {% endif %}
                             </tr>
                         </thead>

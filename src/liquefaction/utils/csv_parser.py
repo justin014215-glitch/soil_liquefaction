@@ -16,7 +16,7 @@ class CSVParser:
         'twd97_x': ['TWD97_X', 'X座標', 'X', 'twd97_x', 'longitude'],
         'twd97_y': ['TWD97_Y', 'Y座標', 'Y', 'twd97_y', 'latitude'],
         'surface_elevation': ['地表高程', '鑽孔地表高程', '高程', 'elevation', 'surface_elevation'],
-        'water_depth': ['地下水位', '水位深度', 'water_depth', 'groundwater_depth'],
+        'water_depth': ['地下水位', '水位深度', 'water_depth', 'groundwater_depth', 'water_depth(m)'],
         'city': ['縣市', '城市', 'city'],
         'district': ['鄉鎮區', '區', 'district'],
         'village': ['里', '村', 'village'],
@@ -35,13 +35,17 @@ class CSVParser:
         'plastic_index': ['塑性指數', 'PI', 'plastic_index', 'plasticity_index'],
     }
     
-    def __init__(self):
+    def __init__(self, unit_weight_unit = 't/m3'):
+        self.unit_weight_unit = unit_weight_unit
         self.column_mapping = {}
         self.parsed_data = {}
         self.errors = []
         self.warnings = []
+        # 新增：收集統體單位重數值用於判斷單位
+        self.unit_weight_values = []
+        self.detected_unit = None
     
-    def parse_csv(self, file_path: str, encoding: str = 'utf-8') -> Dict[str, Any]:
+    def parse_csv(self, file_path: str, encoding: str = 'utf-8', unit_weight_unit: str = 't/m3') -> Dict[str, Any]:
         """
         解析 CSV 檔案
         
@@ -52,7 +56,14 @@ class CSVParser:
         Returns:
             解析結果字典
         """
+
+
+        if unit_weight_unit:
+            self.unit_weight_unit = unit_weight_unit
         try:
+            # 清空之前的數據
+            self.unit_weight_values = []
+            self.detected_unit = None
             # 嘗試不同編碼讀取檔案
             df = self._read_csv_with_encoding(file_path, encoding)
             
@@ -81,7 +92,10 @@ class CSVParser:
                 'data': self.parsed_data,
                 'warnings': self.warnings,
                 'errors': self.errors,
-                'column_mapping': self.column_mapping
+                'column_mapping': self.column_mapping,
+                'detected_unit': self.detected_unit,  # 新增
+                'unit_consistency': self.detected_unit == self.unit_weight_unit  # 新增
+ 
             }
             
         except Exception as e:
@@ -93,6 +107,61 @@ class CSVParser:
                 'errors': self.errors
             }
     
+    def _detect_unit_weight_unit(self) -> str:
+        """
+        根據統體單位重數值範圍自動判斷單位
+        
+        Returns:
+            判斷出的單位 ('t/m3' 或 'kN/m3')
+        """
+        if not self.unit_weight_values:
+            return self.unit_weight_unit  # 沒有數值，返回預設單位
+        
+        # 過濾有效數值
+        valid_values = [v for v in self.unit_weight_values if v is not None and v > 0]
+        if not valid_values:
+            return self.unit_weight_unit
+        
+        avg_value = sum(valid_values) / len(valid_values)
+        min_value = min(valid_values)
+        max_value = max(valid_values)
+        
+        # 判斷邏輯
+        t_m3_score = 0
+        kn_m3_score = 0
+        
+        # 基於平均值判斷
+        if 1.0 <= avg_value <= 3.0:
+            t_m3_score += 3
+        elif 9.8 <= avg_value <= 30.0:
+            kn_m3_score += 3
+        
+        # 基於範圍判斷
+        if 0.8 <= min_value <= 3.5 and 1.5 <= max_value <= 4.0:
+            t_m3_score += 2
+        elif 8.0 <= min_value <= 35.0 and 12.0 <= max_value <= 40.0:
+            kn_m3_score += 2
+        
+        # 基於數值分佈判斷
+        t_m3_count = sum(1 for v in valid_values if 0.5 <= v <= 4.0)
+        kn_m3_count = sum(1 for v in valid_values if 8.0 <= v <= 40.0)
+        
+        if t_m3_count > len(valid_values) * 0.7:
+            t_m3_score += 1
+        elif kn_m3_count > len(valid_values) * 0.7:
+            kn_m3_score += 1
+        
+        # 判斷結果
+        if t_m3_score > kn_m3_score:
+            detected_unit = 't/m3'
+        elif kn_m3_score > t_m3_score:
+            detected_unit = 'kN/m3'
+        else:
+            # 無法判斷，使用預設
+            detected_unit = self.unit_weight_unit
+        
+        return detected_unit
+
     def _read_csv_with_encoding(self, file_path: str, encoding: str) -> pd.DataFrame:
         """嘗試不同編碼讀取 CSV 檔案"""
         encodings = [encoding, 'utf-8', 'cp950', 'big5', 'gb2312']
@@ -247,12 +316,10 @@ class CSVParser:
                     value = row[self.column_mapping[field]]
                     if pd.notna(value) and str(value).strip():
                         if field == 'spt_n':
-                            # 特殊處理 N 值，因為可能是字串格式
+                            # 特殊處理 N 值
                             try:
-                                # 嘗試直接轉換
                                 soil_layer[field] = float(value)
                             except (ValueError, TypeError):
-                                # 如果是字串，嘗試解析
                                 value_str = str(value).strip()
                                 if value_str.startswith('>'):
                                     try:
@@ -260,7 +327,6 @@ class CSVParser:
                                     except:
                                         self.warnings.append(f"鑽孔 {borehole_id}: N值格式錯誤 ({value})")
                                 else:
-                                    # 嘗試從字串中提取數字
                                     import re
                                     numbers = re.findall(r'\d+\.?\d*', value_str)
                                     if numbers:
@@ -270,9 +336,20 @@ class CSVParser:
                                             self.warnings.append(f"鑽孔 {borehole_id}: 無法解析N值 ({value})")
                                     else:
                                         self.warnings.append(f"鑽孔 {borehole_id}: N值格式錯誤 ({value})")
-                        elif field in ['unit_weight', 'water_content', 'gravel_percent',
-                                    'sand_percent', 'silt_percent', 'clay_percent', 'fines_content',
-                                    'plastic_index']:
+                        
+                        elif field == 'unit_weight':
+                            # 處理統體單位重
+                            try:
+                                unit_weight_value = float(value)
+                                soil_layer[field] = unit_weight_value
+                                # 收集數值用於單位判斷
+                                self.unit_weight_values.append(unit_weight_value)
+                                
+                            except (ValueError, TypeError):
+                                self.warnings.append(f"鑽孔 {borehole_id}: 統體單位重數值格式錯誤")
+                        
+                        elif field in ['water_content', 'gravel_percent', 'sand_percent', 
+                                     'silt_percent', 'clay_percent', 'fines_content', 'plastic_index']:
                             try:
                                 soil_layer[field] = float(value)
                             except (ValueError, TypeError):
@@ -285,7 +362,6 @@ class CSVParser:
         except Exception as e:
             self.errors.append(f"鑽孔 {borehole_id} 土層資料解析錯誤: {str(e)}")
             return None
-    
     def _validate_data(self) -> None:
         """資料驗證"""
         # 驗證座標範圍（台灣地區）
@@ -349,3 +425,38 @@ class CSVParser:
         }
         
         return summary
+    
+    def _validate_unit_weight_consistency(self):
+        """驗證統體單位重的一致性並給出警告"""
+        if not self.unit_weight_values:
+            return
+        
+        # 自動判斷單位
+        self.detected_unit = self._detect_unit_weight_unit()
+        
+        # 與設定單位比較
+        if self.detected_unit != self.unit_weight_unit:
+            avg_value = sum(v for v in self.unit_weight_values if v is not None) / len([v for v in self.unit_weight_values if v is not None])
+            self.warnings.append(
+                f"⚠️ 單位不一致警告：CSV中的統體單位重數值（平均值: {avg_value:.2f}）"
+                f"看起來是 {self.detected_unit} 單位，但專案設定為 {self.unit_weight_unit}。"
+                f"請確認單位是否正確，或考慮修改專案設定。"
+            )
+        
+        # 根據檢測到的單位進行範圍檢查
+        for i, (layer, value) in enumerate(zip(self.parsed_data['soil_layers'], self.unit_weight_values)):
+            if value is None:
+                continue
+                
+            borehole_id = layer['borehole_id']
+            
+            if self.detected_unit == 't/m3':
+                if not (0.8 <= value <= 3.5):  # 稍微放寬範圍
+                    self.warnings.append(
+                        f"鑽孔 {borehole_id}: 統體單位重 {value} t/m³ 可能超出合理範圍 (0.8~3.5)"
+                    )
+            elif self.detected_unit == 'kN/m3':
+                if not (8.0 <= value <= 35.0):  # 稍微放寬範圍
+                    self.warnings.append(
+                        f"鑽孔 {borehole_id}: 統體單位重 {value} kN/m³ 可能超出合理範圍 (8.0~35.0)"
+                    )    
