@@ -88,21 +88,38 @@ class LiquefactionAnalysisEngine:
     """液化分析計算引擎 - 專門用於調用外部分析方法"""
     
     def __init__(self, project: AnalysisProject, analysis_method: str = None):
+        # 首先設置基本屬性，確保不會出現屬性錯誤
         self.project = project
-        # 修正：確保分析方法正確設定
-        self.analysis_method = analysis_method or project.analysis_method or 'HBF'
-        self.em_value = project.em_value
-        self.unit_weight_unit = project.unit_weight_unit
-        self.use_fault_data = project.use_fault_data
         self.warnings = []
         self.errors = []
         self.fault_shapefile_path = None
         self._is_running = False
-        # 創建專案專用的輸出目錄
-        self.project_output_dir = self._create_project_output_dir()
         
-        # 修正：添加除錯輸出
+        # 設置分析方法 - 確保一定有值
+        if analysis_method:
+            self.analysis_method = str(analysis_method).strip()
+        elif project.analysis_method:
+            self.analysis_method = str(project.analysis_method).strip()
+        else:
+            self.analysis_method = 'HBF'  # 預設值
+        
+        # 設置其他屬性
+        self.em_value = project.em_value
+        self.unit_weight_unit = project.unit_weight_unit
+        self.use_fault_data = project.use_fault_data
+        
         print(f"🔧 初始化分析引擎 - 方法: {self.analysis_method}")
+        
+        # 創建專案專用的輸出目錄
+        try:
+            self.project_output_dir = self._create_project_output_dir()
+        except Exception as e:
+            print(f"❌ 創建輸出目錄失敗: {e}")
+            # 使用預設目錄
+            import os
+            from django.conf import settings
+            self.project_output_dir = os.path.join(settings.MEDIA_ROOT, 'analysis_outputs', str(project.id))
+            os.makedirs(self.project_output_dir, exist_ok=True)
 
     def set_fault_shapefile_path(self, path: str):
         """設定斷層 shapefile 的檔案路徑"""
@@ -333,7 +350,12 @@ class LiquefactionAnalysisEngine:
         return pd.DataFrame(data_list)
 
     @transaction.atomic
-    def _save_analysis_results_to_database(self, results_df: pd.DataFrame, method_name: str = None):
+    def _save_analysis_results_to_database(self, results_df: pd.DataFrame, method_name: str):
+        # 強制使用傳入的method_name，不允許為None
+        if not method_name:
+            raise ValueError("method_name 不能為空")
+        analysis_method = method_name
+        print(f"🔧 明確儲存方法: {analysis_method}")
         """將外部分析方法的結果儲存到資料庫 - 增強除錯版本"""
         
         # 修正：使用傳入的方法名稱或當前設定的方法

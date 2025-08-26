@@ -182,8 +182,8 @@ def project_detail(request, pk):
             for method in selected_methods:
                 # 暫時更新專案的分析方法
                 original_method = project.analysis_method
-                project.analysis_method = method
-                project.save()
+                #project.analysis_method = method
+                #project.save()
                 
                 # 執行分析
                 analysis_engine = LiquefactionAnalysisEngine(project)
@@ -579,10 +579,13 @@ def results(request, pk):
         messages.warning(request, '專案尚未有分析結果')
         return redirect('liquefaction:project_detail', pk=project.pk)
     
-    # 修正：使用正確的方法獲取可用分析方法
+    # 更明確的查詢方式
     available_methods_raw = AnalysisResult.objects.filter(
         soil_layer__borehole__project=project
-    ).values_list('analysis_method', flat=True).distinct().order_by('analysis_method')
+    ).exclude(analysis_method__isnull=True).exclude(analysis_method='').values_list('analysis_method', flat=True).distinct()
+
+    # 除錯輸出
+    print(f"🔍 專案 {project.name} 找到的分析方法: {list(available_methods_raw)}")
 
     # 轉換為列表並過濾空值
     available_methods_list = [method for method in available_methods_raw if method]
