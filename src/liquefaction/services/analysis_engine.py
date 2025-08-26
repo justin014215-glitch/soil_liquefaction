@@ -82,22 +82,28 @@ except Exception as e:
 
 print(f"分析方法可用狀態: HBF={HBF_AVAILABLE}, NCEER={NCEER_AVAILABLE}, AIJ={AIJ_AVAILABLE}, JRA={JRA_AVAILABLE}")
 
+# 修正 analysis_engine.py 中的關鍵方法
+
 class LiquefactionAnalysisEngine:
     """液化分析計算引擎 - 專門用於調用外部分析方法"""
     
-    def __init__(self, project: AnalysisProject,analysis_method: str = None):
+    def __init__(self, project: AnalysisProject, analysis_method: str = None):
         self.project = project
-        self.analysis_method = analysis_method or project.analysis_method
+        # 修正：確保分析方法正確設定
+        self.analysis_method = analysis_method or project.analysis_method or 'HBF'
         self.em_value = project.em_value
         self.unit_weight_unit = project.unit_weight_unit
         self.use_fault_data = project.use_fault_data
         self.warnings = []
         self.errors = []
         self.fault_shapefile_path = None
-        self._is_running = False  # 添加執行標記
+        self._is_running = False
         # 創建專案專用的輸出目錄
         self.project_output_dir = self._create_project_output_dir()
-    
+        
+        # 修正：添加除錯輸出
+        print(f"🔧 初始化分析引擎 - 方法: {self.analysis_method}")
+
     def set_fault_shapefile_path(self, path: str):
         """設定斷層 shapefile 的檔案路徑"""
         self.fault_shapefile_path = path
@@ -114,7 +120,9 @@ class LiquefactionAnalysisEngine:
         safe_project_name = "".join(c for c in self.project.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
         dir_name = f"{self.project.id}_{safe_project_name}_{self.analysis_method}"
         
-        project_dir = os.path.join(settings.ANALYSIS_OUTPUT_ROOT, dir_name)
+        analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
+                                      os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
+        project_dir = os.path.join(analysis_output_root, dir_name)
         os.makedirs(project_dir, exist_ok=True)
         
         return project_dir
@@ -197,13 +205,9 @@ class LiquefactionAnalysisEngine:
             }
         
         self._is_running = True
-        print(f"🔵 開始執行分析，項目狀態: {self.project.status}")
+        print(f"🔵 開始執行 {self.analysis_method} 分析，項目狀態: {self.project.status}")
         
         try:
-            # 更新專案狀態
-            self.project.status = 'processing'
-            self.project.save()
-            
             # 根據選擇的分析方法調用對應的外部分析方法
             if self.analysis_method == 'HBF' and HBF_AVAILABLE:
                 result = self._run_external_analysis('HBF', HBF)
@@ -222,11 +226,7 @@ class LiquefactionAnalysisEngine:
             return result
                 
         except Exception as e:
-            self.project.status = 'error'
-            self.project.error_message = str(e)
-            self.project.save()
-            
-            logger.error(f"液化分析錯誤: {str(e)}")
+            logger.error(f"液化分析錯誤 ({self.analysis_method}): {str(e)}")
             return {
                 'success': False,
                 'error': str(e),
@@ -235,12 +235,17 @@ class LiquefactionAnalysisEngine:
             }
         finally:
             self._is_running = False
-            print(f"🔵 分析執行結束")
+            print(f"🔵 {self.analysis_method} 分析執行結束")
 
     def _run_external_analysis(self, method_name: str, analyzer_class) -> Dict[str, Any]:
         """使用外部分析方法（您提供的 HBF, NCEER, AIJ, JRA 等）"""
         try:
             print(f"開始 {method_name} 分析...")
+            
+            # 修正：確保方法名稱一致
+            if method_name != self.analysis_method:
+                print(f"⚠️ 警告：方法名稱不一致 - 預期: {self.analysis_method}, 實際: {method_name}")
+                self.analysis_method = method_name
             
             # 準備資料
             df = self._prepare_dataframe_for_analysis()
@@ -265,12 +270,12 @@ class LiquefactionAnalysisEngine:
             results_df, lpi_summary, _ = self._execute_analysis(analyzer, df, method_name)
             
             if results_df is not None and len(results_df) > 0:
-                print("開始儲存結果到資料庫...")
-                self._save_analysis_results_to_database(results_df)
+                print(f"開始儲存 {method_name} 結果到資料庫...")
+                print(f"結果數量: {len(results_df)}")
+                print(f"當前分析方法: {self.analysis_method}")
                 
-                self.project.status = 'completed'
-                self.project.error_message = ''
-                self.project.save()
+                # 修正：傳遞方法名稱到儲存函數
+                self._save_analysis_results_to_database(results_df, method_name)
                 
                 print(f"{method_name} 分析成功完成!")
                 return {
@@ -291,7 +296,6 @@ class LiquefactionAnalysisEngine:
             print("完整錯誤追蹤:")
             print(traceback.format_exc())
             raise
-
 
     def _prepare_dataframe_for_analysis(self) -> pd.DataFrame:
         """準備給外部分析器使用的 DataFrame"""
@@ -328,25 +332,36 @@ class LiquefactionAnalysisEngine:
         
         return pd.DataFrame(data_list)
 
-
-
     @transaction.atomic
-    def _save_analysis_results_to_database(self, results_df: pd.DataFrame):
-        """將外部分析方法的結果儲存到資料庫 - 支援多方法並修復事務錯誤"""
+    def _save_analysis_results_to_database(self, results_df: pd.DataFrame, method_name: str = None):
+        """將外部分析方法的結果儲存到資料庫 - 增強除錯版本"""
+        
+        # 修正：使用傳入的方法名稱或當前設定的方法
+        analysis_method = method_name or self.analysis_method
+        print(f"🔧 [DEBUG] 儲存分析結果開始")
+        print(f"🔧 [DEBUG] 傳入方法名稱: {method_name}")
+        print(f"🔧 [DEBUG] 當前設定方法: {self.analysis_method}")
+        print(f"🔧 [DEBUG] 最終使用方法: {analysis_method}")
+        print(f"🔧 [DEBUG] 結果DataFrame形狀: {results_df.shape}")
+        print(f"🔧 [DEBUG] 結果DataFrame欄位: {list(results_df.columns)}")
+        
+        # 檢查DataFrame內容
+        if len(results_df) > 0:
+            print(f"🔧 [DEBUG] 第一筆資料的鑽孔編號: {results_df.iloc[0].get('鑽孔編號', 'NOT_FOUND')}")
+            print(f"🔧 [DEBUG] 第一筆資料的上限深度: {results_df.iloc[0].get('上限深度(公尺)', 'NOT_FOUND')}")
+            print(f"🔧 [DEBUG] 第一筆資料的下限深度: {results_df.iloc[0].get('下限深度(公尺)', 'NOT_FOUND')}")
         
         try:
             # 先清除當前分析方法的舊結果，保留其他方法的結果
-            deleted_count = AnalysisResult.objects.filter(
+            old_results = AnalysisResult.objects.filter(
                 soil_layer__borehole__project=self.project,
-                analysis_method=self.analysis_method
-            ).count()
+                analysis_method=analysis_method
+            )
+            deleted_count = old_results.count()
+            print(f"🔧 [DEBUG] 找到 {deleted_count} 個舊的 {analysis_method} 結果需要刪除")
             
-            AnalysisResult.objects.filter(
-                soil_layer__borehole__project=self.project,
-                analysis_method=self.analysis_method
-            ).delete()
-            
-            print(f"已清除 {self.analysis_method} 方法的 {deleted_count} 個舊結果")
+            old_results.delete()
+            print(f"🔧 [DEBUG] 已清除 {analysis_method} 方法的 {deleted_count} 個舊結果")
             
             # 安全地獲取數值的輔助函數
             def safe_float(val):
@@ -360,41 +375,60 @@ class LiquefactionAnalysisEngine:
             # 批次處理插入，收集要創建的對象
             results_to_create = []
             skipped_count = 0
+            processed_count = 0
             
-            for _, row in results_df.iterrows():
+            for index, row in results_df.iterrows():
+                processed_count += 1
+                print(f"🔧 [DEBUG] 處理第 {processed_count} 筆資料...")
+                
                 try:
                     # 找到對應的土層
-                    borehole = BoreholeData.objects.get(
+                    borehole_id = row.get('鑽孔編號')
+                    top_depth = row.get('上限深度(公尺)')
+                    bottom_depth = row.get('下限深度(公尺)')
+                    
+                    print(f"🔧 [DEBUG]   查找鑽孔: {borehole_id}")
+                    
+                    borehole = BoreholeData.objects.filter(
                         project=self.project,
-                        borehole_id=row['鑽孔編號']
-                    )
+                        borehole_id=borehole_id
+                    ).first()
+                    
+                    if not borehole:
+                        print(f"❌ [DEBUG]   找不到鑽孔: {borehole_id}")
+                        skipped_count += 1
+                        continue
+                    
+                    print(f"🔧 [DEBUG]   查找土層: {top_depth}-{bottom_depth}m")
                     
                     soil_layer = SoilLayer.objects.filter(
                         borehole=borehole,
-                        top_depth=float(row['上限深度(公尺)']),
-                        bottom_depth=float(row['下限深度(公尺)'])
+                        top_depth=float(top_depth),
+                        bottom_depth=float(bottom_depth)
                     ).first()
                     
                     if not soil_layer:
+                        print(f"❌ [DEBUG]   找不到對應土層: {borehole_id} {top_depth}-{bottom_depth}m")
                         skipped_count += 1
-                        print(f"⚠️ 找不到對應土層: {row['鑽孔編號']} {row['上限深度(公尺)']}-{row['下限深度(公尺)']}m")
                         continue
                     
                     # 檢查是否已存在（避免重複）
                     existing = AnalysisResult.objects.filter(
                         soil_layer=soil_layer,
-                        analysis_method=self.analysis_method
+                        analysis_method=analysis_method
                     ).exists()
                     
                     if existing:
-                        print(f"⚠️ 結果已存在，跳過: {soil_layer} {self.analysis_method}")
+                        print(f"⚠️ [DEBUG]   結果已存在，跳過: {soil_layer} {analysis_method}")
                         skipped_count += 1
                         continue
+                    
+                    print(f"🔧 [DEBUG]   準備創建 {analysis_method} 分析結果...")
                     
                     # 準備分析結果對象
                     analysis_result = AnalysisResult(
                         soil_layer=soil_layer,
-                        analysis_method=self.analysis_method,
+                        analysis_method=analysis_method,  # 確保使用正確的方法名稱
                         soil_depth=safe_float(row.get('土層深度')),
                         mid_depth=safe_float(row.get('土層中點深度')),
                         analysis_depth=safe_float(row.get('分析點深度')),
@@ -445,45 +479,84 @@ class LiquefactionAnalysisEngine:
                     )
                     
                     results_to_create.append(analysis_result)
+                    print(f"✅ [DEBUG]   已準備創建結果對象，analysis_method = '{analysis_result.analysis_method}'")
                     
                 except Exception as e:
                     skipped_count += 1
-                    logger.error(f"準備分析結果時發生錯誤 ({row.get('鑽孔編號', 'unknown')}): {str(e)}")
+                    error_msg = f"準備分析結果時發生錯誤 ({row.get('鑽孔編號', 'unknown')}): {str(e)}"
+                    print(f"❌ [DEBUG]   {error_msg}")
+                    logger.error(error_msg)
+                    import traceback
+                    print(f"🔧 [DEBUG]   錯誤追蹤: {traceback.format_exc()}")
                     continue
+                
+                # 只處理前幾筆來除錯
+                if processed_count >= 3:
+                    print(f"🔧 [DEBUG] 除錯模式：只處理前3筆資料")
+                    break
+            
+            print(f"🔧 [DEBUG] 準備批次創建 {len(results_to_create)} 個結果")
             
             # 批次創建所有結果
             if results_to_create:
                 try:
+                    print(f"🔧 [DEBUG] 開始批次插入...")
+                    
+                    # 先驗證第一個對象的屬性
+                    first_result = results_to_create[0]
+                    print(f"🔧 [DEBUG] 第一個結果對象的 analysis_method: '{first_result.analysis_method}'")
+                    print(f"🔧 [DEBUG] 第一個結果對象的 soil_layer: {first_result.soil_layer}")
+                    
                     created_results = AnalysisResult.objects.bulk_create(
                         results_to_create,
-                        ignore_conflicts=True  # 忽略衝突，避免重複插入錯誤
+                        ignore_conflicts=True
                     )
-                    print(f"✅ 成功儲存 {len(created_results)} 個 {self.analysis_method} 分析結果")
+                    print(f"✅ [DEBUG] 批次插入成功，創建了 {len(created_results)} 個結果")
+                    
+                    # 驗證插入結果
+                    verification_count = AnalysisResult.objects.filter(
+                        soil_layer__borehole__project=self.project,
+                        analysis_method=analysis_method
+                    ).count()
+                    print(f"🔧 [DEBUG] 驗證：資料庫中現在有 {verification_count} 個 {analysis_method} 結果")
                     
                     if skipped_count > 0:
-                        print(f"⚠️ 跳過 {skipped_count} 個記錄")
+                        print(f"⚠️ [DEBUG] 跳過 {skipped_count} 個記錄")
                         
                 except IntegrityError as e:
+                    print(f"❌ [DEBUG] 批次插入發生完整性錯誤: {str(e)}")
                     logger.error(f"批次插入時發生完整性錯誤: {str(e)}")
-                    # 如果批次插入失敗，嘗試逐個插入
-                    print("嘗試逐個插入...")
+                    
+                    # 嘗試逐個插入來找出問題
+                    print("🔧 [DEBUG] 嘗試逐個插入...")
                     success_count = 0
-                    for result in results_to_create:
+                    for i, result in enumerate(results_to_create):
                         try:
+                            print(f"🔧 [DEBUG] 逐個插入第 {i+1} 個結果，方法: '{result.analysis_method}'")
                             result.save()
                             success_count += 1
-                        except IntegrityError:
-                            # 忽略重複記錄錯誤
-                            pass
+                            print(f"✅ [DEBUG] 第 {i+1} 個結果插入成功")
+                        except IntegrityError as ie:
+                            print(f"⚠️ [DEBUG] 第 {i+1} 個結果重複，跳過: {str(ie)}")
                         except Exception as e:
+                            print(f"❌ [DEBUG] 第 {i+1} 個結果插入失敗: {str(e)}")
                             logger.error(f"逐個插入錯誤: {str(e)}")
                     
-                    print(f"✅ 逐個插入成功: {success_count} 個記錄")
+                    print(f"✅ [DEBUG] 逐個插入成功: {success_count} 個記錄")
+                    
+                except Exception as e:
+                    print(f"❌ [DEBUG] 批次插入發生其他錯誤: {str(e)}")
+                    logger.error(f"批次插入錯誤: {str(e)}")
+                    import traceback
+                    print(f"🔧 [DEBUG] 詳細錯誤: {traceback.format_exc()}")
+                    raise
             else:
-                print("⚠️ 沒有有效的分析結果可以儲存")
+                print("⚠️ [DEBUG] 沒有有效的分析結果可以儲存")
                 
         except Exception as e:
+            print(f"❌ [DEBUG] 儲存過程發生嚴重錯誤: {str(e)}")
             logger.error(f"儲存分析結果到資料庫時發生嚴重錯誤: {str(e)}")
+            import traceback
+            print(f"🔧 [DEBUG] 完整錯誤追蹤: {traceback.format_exc()}")
             # 重新拋出錯誤，讓上層處理
-            raise        
-         
+            raise

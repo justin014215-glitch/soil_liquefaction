@@ -448,66 +448,77 @@ def analyze(request, pk):
             print("正在載入分析引擎...")
             from .services.analysis_engine import LiquefactionAnalysisEngine
             
+            # 修正：先更新專案狀態為 processing
+            project.status = 'processing'
+            project.error_message = ''
+            project.save()
+            
             total_success = 0
             total_errors = []
             original_method = project.analysis_method
             
             for method in selected_methods:
-                print(f"開始執行 {method} 分析...")
+                print(f"\n🔧 開始執行 {method} 分析...")
                 
-                # 只建立一次分析引擎，並傳入指定的方法
-                analysis_engine = LiquefactionAnalysisEngine(project, analysis_method=method)
-                analysis_result = analysis_engine.run_analysis()
-                
-                print(f"{method} 分析結果: {analysis_result}")
-                
-                if analysis_result['success']:
-                    total_success += 1
-                    messages.success(
-                        request, 
-                        f'{method} 分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層。'
-                    )
+                try:
+                    # 修正：確保每個方法都有獨立的分析引擎實例
+                    analysis_engine = LiquefactionAnalysisEngine(project, analysis_method=method)
+                    print(f"🔧 分析引擎初始化完成 - 方法: {analysis_engine.analysis_method}")
                     
-                    # 顯示警告訊息
-                    for warning in analysis_result.get('warnings', []):
-                        messages.warning(request, f'{method} 警告：{warning}')
-                else:
-                    total_errors.append(f'{method}: {analysis_result["error"]}')
-                    messages.error(request, f'{method} 分析失敗：{analysis_result["error"]}')
+                    analysis_result = analysis_engine.run_analysis()
                     
-                    # 顯示詳細錯誤
-                    for error in analysis_result.get('errors', []):
-                        messages.error(request, f'{method} 錯誤：{error}')
-                
-                print(f"{method} 分析結果: {analysis_result}")
-                
-                if analysis_result['success']:
-                    total_success += 1
-                    messages.success(
-                        request, 
-                        f'{method} 分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層。'
-                    )
+                    print(f"🔧 {method} 分析結果: {analysis_result}")
                     
-                    # 顯示警告訊息
-                    for warning in analysis_result.get('warnings', []):
-                        messages.warning(request, f'{method} 警告：{warning}')
-                else:
-                    total_errors.append(f'{method}: {analysis_result["error"]}')
-                    messages.error(request, f'{method} 分析失敗：{analysis_result["error"]}')
+                    if analysis_result['success']:
+                        total_success += 1
+                        messages.success(
+                            request, 
+                            f'{method} 分析完成！共分析 {analysis_result["analyzed_layers"]} 個土層。'
+                        )
+                        
+                        # 顯示警告訊息
+                        for warning in analysis_result.get('warnings', []):
+                            messages.warning(request, f'{method} 警告：{warning}')
+                    else:
+                        total_errors.append(f'{method}: {analysis_result["error"]}')
+                        messages.error(request, f'{method} 分析失敗：{analysis_result["error"]}')
+                        
+                        # 顯示詳細錯誤
+                        for error in analysis_result.get('errors', []):
+                            messages.error(request, f'{method} 錯誤：{error}')
+                            
+                except Exception as e:
+                    error_msg = f'{method} 分析過程發生異常: {str(e)}'
+                    print(f"❌ {error_msg}")
+                    total_errors.append(error_msg)
+                    messages.error(request, error_msg)
                     
-                    # 顯示詳細錯誤
-                    for error in analysis_result.get('errors', []):
-                        messages.error(request, f'{method} 錯誤：{error}')
+                    import traceback
+                    print(f"詳細錯誤追蹤:\n{traceback.format_exc()}")
             
             # 恢復原始分析方法
             project.analysis_method = original_method
             
-            # 更新專案狀態
+            # 修正：更新專案狀態
             if total_success > 0:
                 project.status = 'completed'
                 project.error_message = ''
                 project.save()
+                
+                print(f"✅ 多方法分析完成！成功完成 {total_success}/{len(selected_methods)} 種方法的分析")
                 messages.success(request, f'多方法分析完成！成功完成 {total_success}/{len(selected_methods)} 種方法的分析')
+                
+                # 修正：驗證結果是否正確儲存
+                print("\n🔍 驗證分析結果儲存情況:")
+                for method in selected_methods:
+                    count = AnalysisResult.objects.filter(
+                        soil_layer__borehole__project=project,
+                        analysis_method=method
+                    ).count()
+                    print(f"  {method}: {count} 個結果")
+                    if count == 0:
+                        messages.warning(request, f'警告：{method} 分析結果可能未正確儲存')
+                
                 return redirect('liquefaction:results', pk=project.pk)
             else:
                 project.status = 'error'
@@ -516,6 +527,10 @@ def analyze(request, pk):
                 return redirect('liquefaction:project_detail', pk=project.pk)
                 
         except Exception as e:
+            print(f"❌ 分析過程中發生嚴重錯誤：{str(e)}")
+            import traceback
+            print(f"詳細錯誤追蹤:\n{traceback.format_exc()}")
+            
             messages.error(request, f'分析過程中發生錯誤：{str(e)}')
             project.status = 'error'
             project.error_message = str(e)
@@ -532,7 +547,6 @@ def analyze(request, pk):
     }
     
     return render(request, 'liquefaction/analyze.html', context)
-
 # 添加一個新的 view 用於重置專案狀態
 @login_required
 def reset_project_status(request, pk):
@@ -553,7 +567,7 @@ def reset_project_status(request, pk):
 
 @login_required
 def results(request, pk):
-    """查看分析結果 - 新增方法篩選"""
+    """查看分析結果 - 修正方法篩選邏輯"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
     # 檢查是否有分析結果
@@ -565,13 +579,14 @@ def results(request, pk):
         messages.warning(request, '專案尚未有分析結果')
         return redirect('liquefaction:project_detail', pk=project.pk)
     
-    # 使用更可靠的方法獲取可用分析方法
+    # 修正：使用正確的方法獲取可用分析方法
     available_methods_raw = AnalysisResult.objects.filter(
         soil_layer__borehole__project=project
     ).values_list('analysis_method', flat=True).distinct().order_by('analysis_method')
 
     # 轉換為列表並過濾空值
     available_methods_list = [method for method in available_methods_raw if method]
+    print(f"🔍 資料庫中找到的分析方法: {available_methods_list}")
 
     # 如果上面的方法失敗，手動檢查每個方法
     if not available_methods_list:
@@ -583,12 +598,13 @@ def results(request, pk):
                 analysis_method=method
             ).exists():
                 available_methods_list.append(method)
+        print(f"🔍 手動檢查找到的分析方法: {available_methods_list}")
     
-    # 獲取方法名稱對應
+    # 修正：獲取方法名稱對應 - 使用 available_methods_list 而不是 available_methods_raw
     method_choices = dict(AnalysisProject._meta.get_field('analysis_method').choices)
     available_methods_display = [
         (method, method_choices.get(method, method)) 
-        for method in available_methods_raw
+        for method in available_methods_list  # 修正：使用 available_methods_list
     ]
     
     print(f"🔍 顯示用的方法對應: {available_methods_display}")
@@ -600,17 +616,30 @@ def results(request, pk):
         'soil_layer__borehole__borehole_id', 'soil_layer__top_depth', 'analysis_method'
     )
     
+    print(f"🔍 總分析結果數量: {results.count()}")
+    
+    # 按分析方法統計
+    method_stats = {}
+    for method in available_methods_list:
+        count = results.filter(analysis_method=method).count()
+        method_stats[method] = count
+        print(f"🔍 {method} 方法結果數量: {count}")
+    
     # 應用篩選條件
     borehole_filter = request.GET.get('borehole', '')
     if borehole_filter:
         results = results.filter(soil_layer__borehole__borehole_id=borehole_filter)
+        print(f"🔍 鑽孔篩選後結果數量: {results.count()}")
     
-    # 新增：分析方法篩選
+    # 分析方法篩選
     method_filter = request.GET.get('method', '')
     if method_filter:
         results = results.filter(analysis_method=method_filter)
-        print(f"🔍 篩選方法: {method_filter}, 結果數量: {results.count()}")
+        print(f"🔍 篩選方法 {method_filter} 後結果數量: {results.count()}")
+    else:
+        print(f"🔍 未篩選方法，顯示全部結果: {results.count()}")
     
+    # LPI篩選
     lpi_filter = request.GET.get('lpi', '')
     if lpi_filter == 'low':
         results = results.filter(lpi_design__lt=5.0)
@@ -621,16 +650,20 @@ def results(request, pk):
     
     print(f"🔍 最終結果數量: {results.count()}")
     
+    # 新增：debug資訊 - 檢查實際結果中的方法分佈
+    actual_methods_in_results = results.values_list('analysis_method', flat=True).distinct()
+    print(f"🔍 最終結果中包含的分析方法: {list(actual_methods_in_results)}")
+    
     context = {
         'project': project,
         'results': results,
         'available_methods': available_methods_display,
         'method_filter': method_filter,
-        'lpi_filter': lpi_filter,  
+        'lpi_filter': lpi_filter,
+        'method_stats': method_stats,  # 新增：方法統計資訊
     }
     
     return render(request, 'liquefaction/results.html', context)
-
 
 @login_required
 def export_results(request, pk):
