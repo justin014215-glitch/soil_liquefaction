@@ -1702,7 +1702,7 @@ class AIJ:
                 sigma_v = row.get('累計sigmav')
                 
                 if pd.notna(sigma_v_csr) and pd.notna(sigma_v) and rd != "-":
-                    CSR = parse_numeric_value(0.65 * (A_value) * (sigma_v / sigma_v_csr) * rd )
+                    CSR = parse_numeric_value(0.1 * (mw_value-1) * (A_value) * (sigma_v / sigma_v_csr) * rd )
                 else:
                     CSR = "-"
                 
@@ -1765,7 +1765,7 @@ class AIJ:
             rd = max(0.1, min(1.0, rd))  # 確保 rd 在合理範圍內
             
             # 4. 計算 CSR (反覆剪應力比)
-            CSR = parse_numeric_value(0.65 * (A_value) * (sigma_v / sigma_v_csr) * rd )
+            CSR = parse_numeric_value(0.1* (mw_value-1) * (A_value) * (sigma_v / sigma_v_csr) * rd )
             
             # 5. 計算調整後的 CRR
             if Na == "-" or pd.isna(Na):
@@ -2069,7 +2069,7 @@ class AIJ:
         print(f"\n正在生成LPI摘要報表...")
         
         # 取得每個鑽孔的基本資訊和LPI總和
-        summary_data = [],
+        summary_data = []
         
         for hole_id in final_df['鑽孔編號'].unique():
             hole_data = final_df[final_df['鑽孔編號'] == hole_id]
@@ -2552,7 +2552,7 @@ class AIJ:
         project_prefix = f"{project_id}_" if project_id else ""
         
         if output_file_path is None:
-            output_filename = os.path.join(output_dir, f"{project_prefix}NCEER液化分析結果_{current_time}.csv")
+            output_filename = os.path.join(output_dir, f"{project_prefix}AIJ液化分析結果_{current_time}.csv")
         else:
             output_filename = output_file_path
 

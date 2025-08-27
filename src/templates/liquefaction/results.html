@@ -1,4 +1,24 @@
+
 {% extends 'base.html' %}
+<!-- 在 results.html 頂部添加 -->
+{% load static %}
+<script>
+function getColumnHeaders(method) {
+    if (method === 'AIJ') {
+        return {
+            'n_param1': 'N72',
+            'n_param2': 'N1_72', 
+            'n_param3': 'Na'
+        };
+    } else {
+        return {
+            'n_param1': 'N60',
+            'n_param2': 'N1_60',
+            'n_param3': 'N₁₆₀cs'
+        };
+    }
+}
+</script>
 
 {% block title %}分析結果 - {{ project.name }}{% endblock %}
 
@@ -271,7 +291,14 @@
                                 <th rowspan="2">深度<br>(m)</th>
                                 <th rowspan="2">土壤<br>分類</th>
                                 <th rowspan="2">SPT-N</th>
-                                <th rowspan="2">N₁₆₀cs</th>
+                                <!-- 根據分析方法顯示不同欄位 -->
+                                {% if method_filter == 'AIJ' %}
+                                <th rowspan="2">N72</th>
+                                <th rowspan="2">N1_72</th>
+                                <th rowspan="2">Na</th>
+                                {% else %}
+                                <th rowspan="2">N₁60cs</th>
+                                {% endif %}
                                 <th rowspan="2">Vs<br>(m/s)</th>
                                 {% if request.GET.scenario == 'all' %}
                                 <th colspan="3">設計地震</th>
@@ -304,9 +331,20 @@
                                 {% endif %}
                                 <td>{{ result.soil_layer.top_depth|floatformat:1 }}-{{ result.soil_layer.bottom_depth|floatformat:1 }}</td>
                                 <td>{{ result.soil_layer.uscs|default:"-" }}</td>
+                                
+                                <!-- 🔴 修改後的N值顯示邏輯 -->
                                 <td>{{ result.soil_layer.spt_n|floatformat:0|default:"-" }}</td>
+                                
+                                {% if method_filter == 'AIJ' %}
+                                <td>{{ result.n60|floatformat:1|default:"-" }}</td>  <!-- 這裡存的是N72 -->
+                                <td>{{ result.n1_60|floatformat:1|default:"-" }}</td>  <!-- 這裡存的是N1_72 -->
+                                <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>  <!-- 這裡存的是Na -->
+                                {% else %}
                                 <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>
+                                {% endif %}
+                                
                                 <td>{{ result.vs|floatformat:0|default:"-" }}</td>
+
                                 
                                 {% if request.GET.scenario == 'all' %}
                                 <!-- 設計地震 -->

@@ -670,7 +670,7 @@ def export_results(request, pk):
         
         writer = csv.writer(response)
         
-        # ===== 修改：包含所有計算參數的完整標題行 =====
+        # 在 views.py 的 export_results 函數中修改標題行部分
         headers = [
             # 基本資訊
             '鑽孔編號', '分析方法', '深度上限(m)', '深度下限(m)', '土層厚度(m)',
@@ -705,6 +705,14 @@ def export_results(request, pk):
             # 額外資訊
             '單位重(t/m³)', '含水量(%)', '液性限度(%)', '分析時間'
         ]
+
+        # 根據分析方法添加不同的N值相關欄位
+        if method_filter == 'AIJ':
+            headers.extend(['N72', 'N1_72', 'Na', '剪力波速Vs(m/s)', 'CRR_7.5'])
+        else:
+            headers.extend(['N60', 'N1_60', 'N1_60cs', '剪力波速Vs(m/s)', 'CRR_7.5'])
+
+        # 其餘欄位保持不變...
         writer.writerow(headers)
         
         # 獲取分析結果

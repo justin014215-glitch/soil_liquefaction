@@ -257,7 +257,7 @@ class LiquefactionAnalysisEngine:
                     unit_weight_conversion_factor=1.0 if self.unit_weight_unit == 't/m3' else 1.0/9.81
                 )
             else:
-                # NCEER, JRA, AIJ 只需要 default_em 參數
+                # NCEER, JRA, AIJ 也支援 unit_weight_conversion_factor 參數
                 analyzer = analyzer_class(
                     default_em=self.em_value,
                     unit_weight_conversion_factor=1.0 if self.unit_weight_unit == 't/m3' else 1.0/9.81)
@@ -362,7 +362,23 @@ class LiquefactionAnalysisEngine:
                     return float(val)
                 except (ValueError, TypeError):
                     return None
-            
+                    # 根據分析方法定義不同的欄位對應
+            def get_n_value_mappings(analysis_method, row):
+                """根據分析方法返回N值相關參數的對應"""
+                if analysis_method == 'AIJ':
+                    # AIJ方法特殊對應: N72 -> n60, N1_72 -> n1_60, Na -> n1_60cs
+                    return {
+                        'n60': safe_float(row.get('N_72')),      # AIJ的N72存到n60欄位
+                        'n1_60': safe_float(row.get('N1_72')),   # AIJ的N1_72存到n1_60欄位  
+                        'n1_60cs': safe_float(row.get('Na'))     # AIJ的Na存到n1_60cs欄位
+                    }
+                else:
+                    # 其他方法使用標準對應
+                    return {
+                        'n60': safe_float(row.get('N_60')),
+                        'n1_60': safe_float(row.get('N1_60')),
+                        'n1_60cs': safe_float(row.get('N1_60cs'))
+                    }
             # 批次處理插入，收集要創建的對象
             results_to_create = []
             skipped_count = 0
@@ -396,7 +412,7 @@ class LiquefactionAnalysisEngine:
                         print(f"⚠️ 結果已存在，跳過: {soil_layer} {self.analysis_method}")
                         skipped_count += 1
                         continue
-                    
+                    n_value_mappings = get_n_value_mappings(self.analysis_method, row)
                     # 準備分析結果對象
                     analysis_result = AnalysisResult(
                         soil_layer=soil_layer,
@@ -407,12 +423,15 @@ class LiquefactionAnalysisEngine:
                         sigma_v=safe_float(row.get('累計sigmav')),
                         sigma_v_csr=safe_float(row.get('sigma_v_CSR')),
                         sigma_v_crr=safe_float(row.get('sigma_v_CRR')),
-                        n60=safe_float(row.get('N_60')),
-                        n1_60=safe_float(row.get('N1_60')),
-                        n1_60cs=safe_float(row.get('N1_60cs')),
+                        
+                        # 使用動態映射的N值參數
+                        n60=n_value_mappings['n60'],
+                        n1_60=n_value_mappings['n1_60'],
+                        n1_60cs=n_value_mappings['n1_60cs'],
+                        
                         vs=safe_float(row.get('Vs')),
                         crr_7_5=safe_float(row.get('CRR_7_5')),
-                        
+
                         # 設計地震
                         mw_design=safe_float(row.get('Mw_Design')),
                         a_value_design=safe_float(row.get('A_value_Design')),
