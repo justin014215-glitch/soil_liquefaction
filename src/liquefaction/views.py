@@ -631,106 +631,76 @@ def results(request, pk):
     
     return render(request, 'liquefaction/results.html', context)
 
+from django.db.models.fields.related import ForeignKey, OneToOneField, ManyToOneRel
 
 @login_required
 def export_results(request, pk):
-    """匯出分析結果 - 支援多方法"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
-    
-    # 檢查是否有分析結果
+
     total_results = AnalysisResult.objects.filter(
         soil_layer__borehole__project=project
     ).count()
-    
+
     if total_results == 0:
         messages.error(request, '專案尚未有分析結果，無法匯出')
         return redirect('liquefaction:project_detail', pk=project.pk)
-    
+
     try:
         import csv
         from django.http import HttpResponse
         from datetime import datetime
         
-        # 獲取選擇的方法（如果有）
         method_filter = request.GET.get('method', '')
-        
-        # 創建 HTTP 響應
+
         if method_filter:
             filename = f"{project.name}_{method_filter}_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
         else:
             filename = f"{project.name}_all_methods_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
-            
+        
         response = HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
-        
-        # 添加 BOM 以確保 Excel 正確顯示中文
         response.write('\ufeff')
-        
         writer = csv.writer(response)
-        
-        # 寫入標題行 - 包含分析方法欄位
-        headers = [
-            '鑽孔編號', '分析方法', '深度上限(m)', '深度下限(m)', '土壤分類', 'SPT-N', 'N1_60cs', 'Vs(m/s)',
-            '設計地震_Mw', '設計地震_amax(g)', '設計地震_CSR', '設計地震_CRR', '設計地震_FS', '設計地震_LPI',
-            '中小地震_Mw', '中小地震_amax(g)', '中小地震_CSR', '中小地震_CRR', '中小地震_FS', '中小地震_LPI',
-            '最大地震_Mw', '最大地震_amax(g)', '最大地震_CSR', '最大地震_CRR', '最大地震_FS', '最大地震_LPI'
+
+        # 🔹 自動抓取 AnalysisResult 的所有非關聯欄位
+        model_fields = [
+            f for f in AnalysisResult._meta.get_fields()
+            if not (f.is_relation and not isinstance(f, ForeignKey))
         ]
+
+        headers = []
+        for f in model_fields:
+            headers.append(f.verbose_name if hasattr(f, "verbose_name") else f.name)
+
         writer.writerow(headers)
-        
-        # 獲取分析結果
+
+        # 取出結果
         results = AnalysisResult.objects.filter(
             soil_layer__borehole__project=project
-        ).select_related('soil_layer', 'soil_layer__borehole').order_by(
-            'soil_layer__borehole__borehole_id', 'soil_layer__top_depth', 'analysis_method'
+        ).select_related("soil_layer", "soil_layer__borehole").order_by(
+            "soil_layer__borehole__borehole_id", "soil_layer__top_depth", "analysis_method"
         )
-        
-        # 應用方法篩選
+
         if method_filter:
             results = results.filter(analysis_method=method_filter)
-        
-        # 寫入資料行
+
+        # 🔹 寫入所有欄位的值
         for result in results:
-            row = [
-                result.soil_layer.borehole.borehole_id,
-                result.analysis_method,  # 新增：分析方法
-                result.soil_layer.top_depth,
-                result.soil_layer.bottom_depth,
-                result.soil_layer.uscs or '',
-                result.soil_layer.spt_n or '',
-                result.n1_60cs or '',
-                result.vs or '',
-                
-                # 設計地震
-                result.mw_design or '',
-                result.a_value_design or '',
-                result.csr_design or '',
-                result.crr_design or '',
-                result.fs_design or '',
-                result.lpi_design or '',
-                
-                # 中小地震
-                result.mw_mid or '',
-                result.a_value_mid or '',
-                result.csr_mid or '',
-                result.crr_mid or '',
-                result.fs_mid or '',
-                result.lpi_mid or '',
-                
-                # 最大地震
-                result.mw_max or '',
-                result.a_value_max or '',
-                result.csr_max or '',
-                result.crr_max or '',
-                result.fs_max or '',
-                result.lpi_max or ''
-            ]
+            row = []
+            for f in model_fields:
+                value = getattr(result, f.name, "")
+                # 關聯欄位特別處理
+                if isinstance(f, ForeignKey) or isinstance(f, OneToOneField):
+                    value = str(value) if value else ""
+                row.append(value if value is not None else "")
             writer.writerow(row)
-        
+
         return response
-        
+
     except Exception as e:
         messages.error(request, f'匯出結果時發生錯誤：{str(e)}')
         return redirect('liquefaction:results', pk=project.pk)
+
 def api_seismic_data(request):
     """API：獲取地震參數資料"""
     city = request.GET.get('city', '')

@@ -258,7 +258,10 @@ class LiquefactionAnalysisEngine:
                 )
             else:
                 # NCEER, JRA, AIJ 只需要 default_em 參數
-                analyzer = analyzer_class(default_em=self.em_value)
+                analyzer = analyzer_class(
+                    default_em=self.em_value,
+                    unit_weight_conversion_factor=1.0 if self.unit_weight_unit == 't/m3' else 1.0/9.81)
+                
             print(f"{method_name} 分析器設定完成")
             
             # 執行分析
@@ -398,6 +401,7 @@ class LiquefactionAnalysisEngine:
                         soil_depth=safe_float(row.get('土層深度')),
                         mid_depth=safe_float(row.get('土層中點深度')),
                         analysis_depth=safe_float(row.get('分析點深度')),
+                        FC=safe_float(row.get('FC')),
                         sigma_v=safe_float(row.get('累計sigmav')),
                         sigma_v_csr=safe_float(row.get('sigma_v_CSR')),
                         sigma_v_crr=safe_float(row.get('sigma_v_CRR')),

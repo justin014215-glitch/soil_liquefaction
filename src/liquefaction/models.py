@@ -5,7 +5,8 @@ from django.conf import settings
 import uuid
 import os
 from datetime import datetime
-
+import numpy as np
+import pandas as pd
 
 class Project(models.Model):
     name = models.CharField(max_length=200)
@@ -19,8 +20,6 @@ class Project(models.Model):
 def get_default_shapefile_path():
     """取得預設shapefile路徑"""
     return 'default_shapefiles/110全臺36條活動斷層數值檔(111年編修)_1110727.shp'
-
-
 
 
 class AnalysisProject(models.Model):
@@ -191,6 +190,7 @@ class BoreholeData(models.Model):
     twd97_y = models.FloatField(verbose_name="TWD97 Y座標")
     surface_elevation = models.FloatField(null=True, blank=True, verbose_name="地表高程 (m)")
     
+
     # 地下水位
     water_depth = models.FloatField(default=0, verbose_name="地下水位深度 (m)")
     
@@ -256,12 +256,13 @@ class SoilLayer(models.Model):
     specific_gravity = models.FloatField(null=True, blank=True, verbose_name="比重")
     
     # 粒徑分析
+    FC = models.FloatField(null=True, blank=True, verbose_name="細料含量 (%)")  # 新增細料含量欄位
     gravel_percent = models.FloatField(null=True, blank=True, verbose_name="礫石含量 (%)")
     sand_percent = models.FloatField(null=True, blank=True, verbose_name="砂土含量 (%)")
     silt_percent = models.FloatField(null=True, blank=True, verbose_name="粉土含量 (%)")
     clay_percent = models.FloatField(null=True, blank=True, verbose_name="黏土含量 (%)")
     fines_content = models.FloatField(null=True, blank=True, verbose_name="細料含量 (%)")  # 保留原有
-    
+
     # 密度相關
     unit_weight = models.FloatField(null=True, blank=True, verbose_name="統體單位重 (t/m³)")
     bulk_density = models.FloatField(null=True, blank=True, verbose_name="統體密度 (t/m³)")
@@ -340,7 +341,8 @@ class AnalysisResult(models.Model):
     soil_depth = models.FloatField(null=True, blank=True, verbose_name="土層深度 (m)")
     mid_depth = models.FloatField(null=True, blank=True, verbose_name="土層中點深度 (m)")
     analysis_depth = models.FloatField(null=True, blank=True, verbose_name="分析點深度 (m)")
-    
+
+
     # 應力計算
     sigma_v = models.FloatField(null=True, blank=True, verbose_name="總垂直應力 σv (t/m²)")
     sigma_v_csr = models.FloatField(null=True, blank=True, verbose_name="有效垂直應力 σ'v (t/m²)")
@@ -444,3 +446,5 @@ class AnalysisResult(models.Model):
     
     def __str__(self):
         return f"{self.soil_layer} - {self.get_analysis_method_display()}"
+    
+    
