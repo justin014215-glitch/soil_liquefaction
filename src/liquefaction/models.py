@@ -256,7 +256,7 @@ class SoilLayer(models.Model):
     specific_gravity = models.FloatField(null=True, blank=True, verbose_name="比重")
     
     # 粒徑分析
-    FC = models.FloatField(null=True, blank=True, verbose_name="細料含量 (%)")  # 新增細料含量欄位
+
     gravel_percent = models.FloatField(null=True, blank=True, verbose_name="礫石含量 (%)")
     sand_percent = models.FloatField(null=True, blank=True, verbose_name="砂土含量 (%)")
     silt_percent = models.FloatField(null=True, blank=True, verbose_name="粉土含量 (%)")

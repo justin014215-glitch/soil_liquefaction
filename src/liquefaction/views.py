@@ -1069,26 +1069,70 @@ def borehole_detail(request, pk, borehole_id):
     # 取得土層數據
     soil_layers = SoilLayer.objects.filter(borehole=borehole).order_by('top_depth')
     
+    # 根據你的實際模型處理數據
+    for layer in soil_layers:
+        # FC值處理 - 優先使用 FC 欄位，其次是 fines_content
+        if layer.FC is not None:
+            layer.fc_value = layer.FC
+        elif layer.fines_content is not None:
+            layer.fc_value = layer.fines_content
+        # 如果沒有細料欄位，用粉土+黏土計算
+        elif (layer.silt_percent is not None and layer.clay_percent is not None):
+            layer.fc_value = layer.silt_percent + layer.clay_percent
+        else:
+            layer.fc_value = None
+        
+        # 處理N值 - 優先使用 spt_n，其次是 n_value
+        if layer.spt_n is not None:
+            layer.n_val = layer.spt_n
+        elif layer.n_value is not None:
+            layer.n_val = layer.n_value
+        else:
+            layer.n_val = None
+        
+        # 統一土壤分類已經直接可用
+        layer.soil_class = layer.uscs if layer.uscs else None
+        
+        # 單位重處理
+        layer.unit_wt = layer.unit_weight if layer.unit_weight is not None else None
+        
+        # 厚度已經在模型的property中定義了，直接使用
+        # layer.thickness 已經可以直接使用
+        
+        # Debug輸出（可選，用於排查問題）
+        print(f"Layer {layer.id}: FC={layer.fc_value}, N={layer.n_val}, USCS={layer.soil_class}")
+    
     # 取得分析結果（如果有）
     analysis_results = {}
-    for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
-        results = AnalysisResult.objects.filter(
-            soil_layer__borehole=borehole,
-            analysis_method=method_code
-        ).order_by('soil_layer__top_depth')
-        
-        if results.exists():
-            analysis_results[method_code] = {
-                'name': method_name,
-                'results': results
-            }
+    if hasattr(AnalysisProject, '_meta'):
+        try:
+            for method_code, method_name in AnalysisProject._meta.get_field('analysis_method').choices:
+                results = AnalysisResult.objects.filter(
+                    soil_layer__borehole=borehole,
+                    analysis_method=method_code
+                ).order_by('soil_layer__top_depth')
+                
+                if results.exists():
+                    analysis_results[method_code] = {
+                        'name': method_name,
+                        'results': results
+                    }
+        except:
+            # 如果沒有analysis_method欄位或AnalysisResult模型，跳過
+            pass
     
     # 計算鑽孔統計
     total_layers = soil_layers.count()
-    max_depth = max([layer.bottom_depth for layer in soil_layers]) if soil_layers else 0
+    max_depth = 0
+    if soil_layers:
+        depth_values = []
+        for layer in soil_layers:
+            if hasattr(layer, 'bottom_depth') and layer.bottom_depth is not None:
+                depth_values.append(layer.bottom_depth)
+        max_depth = max(depth_values) if depth_values else 0
     
     # N值統計
-    n_values = [layer.spt_n for layer in soil_layers if layer.spt_n is not None]
+    n_values = [layer.n_val for layer in soil_layers if layer.n_val is not None]
     n_stats = {
         'count': len(n_values),
         'min': min(n_values) if n_values else None,
@@ -1096,18 +1140,44 @@ def borehole_detail(request, pk, borehole_id):
         'avg': sum(n_values) / len(n_values) if n_values else None,
     }
     
+    # FC值統計
+    fc_values = [layer.fc_value for layer in soil_layers if layer.fc_value is not None]
+    fc_stats = {
+        'count': len(fc_values),
+        'min': min(fc_values) if fc_values else None,
+        'max': max(fc_values) if fc_values else None,
+        'avg': sum(fc_values) / len(fc_values) if fc_values else None,
+    }
+    
     # 土壤類型分布
     soil_type_counts = {}
     for layer in soil_layers:
-        if layer.uscs:
-            soil_type_counts[layer.uscs] = soil_type_counts.get(layer.uscs, 0) + 1
+        if layer.soil_class:
+            soil_type_counts[layer.soil_class] = soil_type_counts.get(layer.soil_class, 0) + 1
     
     # 深度分布（每5米一組）
     depth_distribution = {}
     for layer in soil_layers:
-        depth_group = int(layer.top_depth // 5) * 5
-        key = f"{depth_group}-{depth_group + 5}m"
-        depth_distribution[key] = depth_distribution.get(key, 0) + 1
+        if hasattr(layer, 'top_depth') and layer.top_depth is not None:
+            depth_group = int(layer.top_depth // 5) * 5
+            key = f"{depth_group}-{depth_group + 5}m"
+            depth_distribution[key] = depth_distribution.get(key, 0) + 1
+    
+    # FC含量分布統計 (用於分析液化潛能)
+    fc_distribution = {
+        '低FC(<15%)': 0,
+        '中FC(15-35%)': 0, 
+        '高FC(>35%)': 0
+    }
+    
+    for layer in soil_layers:
+        if layer.fc_value is not None:
+            if layer.fc_value < 15:
+                fc_distribution['低FC(<15%)'] += 1
+            elif layer.fc_value <= 35:
+                fc_distribution['中FC(15-35%)'] += 1
+            else:
+                fc_distribution['高FC(>35%)'] += 1
     
     context = {
         'project': project,
@@ -1117,14 +1187,13 @@ def borehole_detail(request, pk, borehole_id):
         'total_layers': total_layers,
         'max_depth': max_depth,
         'n_stats': n_stats,
+        'fc_stats': fc_stats,  # FC 統計
         'soil_type_counts': soil_type_counts,
         'depth_distribution': depth_distribution,
+        'fc_distribution': fc_distribution,  # FC 分布統計
     }
     
     return render(request, 'liquefaction/borehole_detail.html', context)
-
-# 在 src/liquefaction/views.py 的最後添加以下函數
-
 @login_required
 def borehole_data(request, pk):
     """鑽井數據總覽視圖"""
@@ -1326,9 +1395,7 @@ def download_analysis_outputs(request, pk):
         messages.error(request, f'下載分析輸出時發生錯誤：{str(e)}')
         return redirect('liquefaction:results', pk=project.pk)
 
-# 修改 views.py 中的 _find_project_output_directories 函數
 
-# 替換 views.py 中的 _find_project_output_directories 函數
 
 def _find_project_output_directories(project):
     """直接搜尋專案相關檔案 - 簡化版本"""

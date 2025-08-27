@@ -191,6 +191,7 @@
                                 <th rowspan="2">統一土壤<br>分類</th>
                                 <th colspan="3">物理性質 (%)</th>
                                 <th rowspan="2">比重</th>
+                                <th rowspan="2">FC(%)</th>
                                 <th colspan="4">粒徑分析 (%)</th>
                                 <th colspan="2">密度 (t/m³)</th>
                                 <th rowspan="2">空隙比</th>
@@ -245,6 +246,7 @@
                                 <td>{{ layer.liquid_limit|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.plastic_index|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.specific_gravity|floatformat:2|default:"-" }}</td>
+                                <td>{{ layer.fines_content|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.gravel_percent|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.sand_percent|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.silt_percent|floatformat:1|default:"-" }}</td>
