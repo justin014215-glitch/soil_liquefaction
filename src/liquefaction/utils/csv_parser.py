@@ -25,14 +25,18 @@ class CSVParser:
         'sample_id': ['取樣編號', '樣品編號', 'sample_id', 'sample_no'],
         'uscs': ['USCS', '土壤分類', 'soil_type', 'classification', '統一土壤分類'],
         'spt_n': ['SPT_N', 'SPT-N', 'N值', 'spt_n', 'N_value'],
-        'unit_weight': ['單位重', '統體單位重(t/m3)', 'unit_weight', 'gamma'],
+        'unit_weight': [
+            '單位重', '統體單位重(t/m3)', 
+            '統體單位重', '統體密度(t/m3)', '統體密度(kN/m3)',
+            '統體密度', 'unit_weight', 'gamma', 'bulk_density',
+        ],
         'water_content': ['含水量', '含水率', 'water_content', 'moisture_content'],
-        'gravel_percent': ['礫石含量', '礫石%', 'gravel_percent', 'gravel'],
-        'sand_percent': ['砂土含量', '砂%', 'sand_percent', 'sand'],
-        'silt_percent': ['粉土含量', '粉土%', 'silt_percent', 'silt'],
-        'clay_percent': ['黏土含量', '黏土%', 'clay_percent', 'clay'],
-        'fines_content': ['細料含量', '細料%', 'fines_content', 'fines'],
-        'plastic_index': ['塑性指數', 'PI', 'plastic_index', 'plasticity_index'],
+        'gravel_percent': ['礫石含量', '礫石%', 'gravel_percent', 'gravel', '礫石(%)'],
+        'sand_percent': ['砂土含量', '砂%', 'sand_percent', 'sand', '砂(%)'],
+        'silt_percent': ['粉土含量', '粉土%', 'silt_percent', 'silt', '粉土(%)'],
+        'clay_percent': ['黏土含量', '黏土%', 'clay_percent', 'clay', '黏土(%)'],
+        'fines_content': ['細料含量', '細料%', 'fines_content', 'fines', '細料(%)'],
+        'plastic_index': ['塑性指數', 'PI', 'plastic_index', 'plasticity_index', '塑性指數(%)'],
     }
     
     def __init__(self, unit_weight_unit = 't/m3'):
@@ -336,7 +340,39 @@ class CSVParser:
                                             self.warnings.append(f"鑽孔 {borehole_id}: 無法解析N值 ({value})")
                                     else:
                                         self.warnings.append(f"鑽孔 {borehole_id}: N值格式錯誤 ({value})")
-                        
+                        # ===== 新增：特別處理塑性指數 NP 情況 =====
+                    if field == 'plastic_index':
+                        value_str = str(value).strip().upper()
+                        if value_str == 'NP':
+                            # NP（非塑性）設為 0，但保留原始值資訊
+                            soil_layer[field] = 0
+                            soil_layer['plastic_index_original'] = 'NP'  # 保留原始值
+                            self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數為 NP（非塑性），已轉換為 0")
+                        else:
+                            try:
+                                soil_layer[field] = float(value_str)
+                                soil_layer['plastic_index_original'] = value_str  # 保留原始值
+                            except (ValueError, TypeError):
+                                self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數數值格式錯誤 ({value})")
+                                soil_layer[field] = 0
+                                soil_layer['plastic_index_original'] = value_str
+                        # ===== 塑性指數處理結束 =====# ===== 新增：特別處理塑性指數 NP 情況 =====
+                        if field == 'plastic_index':
+                            value_str = str(value).strip().upper()
+                            if value_str == 'NP':
+                                # NP（非塑性）設為 0，但保留原始值資訊
+                                soil_layer[field] = 0
+                                soil_layer['plastic_index_original'] = 'NP'  # 保留原始值
+                                self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數為 NP（非塑性），已轉換為 0")
+                            else:
+                                try:
+                                    soil_layer[field] = float(value_str)
+                                    soil_layer['plastic_index_original'] = value_str  # 保留原始值
+                                except (ValueError, TypeError):
+                                    self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數數值格式錯誤 ({value})")
+                                    soil_layer[field] = 0
+                                    soil_layer['plastic_index_original'] = value_str
+                        # ===== 塑性指數處理結束 =====
                         elif field == 'unit_weight':
                             # 處理統體單位重
                             try:
@@ -356,7 +392,20 @@ class CSVParser:
                                 self.warnings.append(f"鑽孔 {borehole_id}: {field} 數值格式錯誤")
                         else:
                             soil_layer[field] = str(value).strip()
-            
+                         # ===== 新增：如果沒有細料含量但有粉土和黏土含量，自動計算 =====
+                        # 在方法最後，返回之前添加
+                        if 'fines_content' not in soil_layer or not soil_layer.get('fines_content'):
+                            silt_percent = soil_layer.get('silt_percent', 0)
+                            clay_percent = soil_layer.get('clay_percent', 0)
+                            
+                            if silt_percent and clay_percent:
+                                try:
+                                    silt_val = float(silt_percent) if silt_percent else 0
+                                    clay_val = float(clay_percent) if clay_percent else 0
+                                    soil_layer['fines_content'] = silt_val + clay_val
+                                    self.warnings.append(f"鑽孔 {borehole_id}: 自動計算細料含量 = 粉土({silt_val}) + 黏土({clay_val}) = {soil_layer['fines_content']}")
+                                except (ValueError, TypeError):
+                                    pass
             return soil_layer
             
         except Exception as e:

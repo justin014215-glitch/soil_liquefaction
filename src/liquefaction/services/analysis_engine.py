@@ -320,7 +320,10 @@ class LiquefactionAnalysisEngine:
                     '細料(%)': layer.fines_content,
                     '塑性指數(%)': layer.plastic_index,
                     '取樣編號': layer.sample_id or f'S-{layer.top_depth}',
-                    
+                    '粉土(%)': layer.silt_percent,
+                    '黏土(%)': layer.clay_percent,
+                    '砂土(%)': layer.sand_percent,
+                    '礫石(%)': layer.gravel_percent,
                     # 地震參數
                     'SDS': borehole.sds,
                     'SMS': borehole.sms,
@@ -401,7 +404,6 @@ class LiquefactionAnalysisEngine:
                         soil_depth=safe_float(row.get('土層深度')),
                         mid_depth=safe_float(row.get('土層中點深度')),
                         analysis_depth=safe_float(row.get('分析點深度')),
-                        FC=safe_float(row.get('FC')),
                         sigma_v=safe_float(row.get('累計sigmav')),
                         sigma_v_csr=safe_float(row.get('sigma_v_CSR')),
                         sigma_v_crr=safe_float(row.get('sigma_v_CRR')),

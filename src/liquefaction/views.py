@@ -635,72 +635,193 @@ from django.db.models.fields.related import ForeignKey, OneToOneField, ManyToOne
 
 @login_required
 def export_results(request, pk):
+    """匯出分析結果 - 支援多方法 - 包含所有計算參數"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
-
+    
+    # 檢查是否有分析結果
     total_results = AnalysisResult.objects.filter(
         soil_layer__borehole__project=project
     ).count()
-
+    
     if total_results == 0:
         messages.error(request, '專案尚未有分析結果，無法匯出')
         return redirect('liquefaction:project_detail', pk=project.pk)
-
+    
     try:
         import csv
         from django.http import HttpResponse
         from datetime import datetime
         
+        # 獲取選擇的方法（如果有）
         method_filter = request.GET.get('method', '')
-
-        if method_filter:
-            filename = f"{project.name}_{method_filter}_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
-        else:
-            filename = f"{project.name}_all_methods_analysis_results_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        export_type = request.GET.get('type', 'csv')
         
+        # 創建 HTTP 響應
+        if method_filter:
+            filename = f"{project.name}_{method_filter}_detailed_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+        else:
+            filename = f"{project.name}_all_methods_detailed_analysis_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
+            
         response = HttpResponse(content_type='text/csv; charset=utf-8')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        
+        # 添加 BOM 以確保 Excel 正確顯示中文
         response.write('\ufeff')
+        
         writer = csv.writer(response)
-
-        # 🔹 自動抓取 AnalysisResult 的所有非關聯欄位
-        model_fields = [
-            f for f in AnalysisResult._meta.get_fields()
-            if not (f.is_relation and not isinstance(f, ForeignKey))
+        
+        # ===== 修改：包含所有計算參數的完整標題行 =====
+        headers = [
+            # 基本資訊
+            '鑽孔編號', '分析方法', '深度上限(m)', '深度下限(m)', '土層厚度(m)',
+            '土壤分類(USCS)', 'SPT-N', '塑性指數(%)', '細料含量(%)', '取樣編號',
+            
+            # 座標和基本參數
+            'TWD97_X', 'TWD97_Y', '地表高程(m)', '地下水位深度(m)',
+            
+            # 地震參數
+            '城市', '基準Mw', 'SDS', 'SMS', '資料來源', '鄰近斷層',
+            
+            # 中間計算參數
+            '土層深度(m)', '土層中點深度(m)', '分析點深度(m)',
+            '總垂直應力σv(t/m²)', '有效垂直應力σ\'v_CSR(t/m²)', '有效垂直應力σ\'v_CRR(t/m²)',
+            'N60', 'N1_60', 'N1_60cs', '剪力波速Vs(m/s)', 'CRR_7.5',
+            
+            # 設計地震詳細參數
+            '設計地震_Mw', '設計地震_A_value(g)', '設計地震_SD_S', '設計地震_SM_S',
+            '設計地震_MSF', '設計地震_rd', '設計地震_CSR', '設計地震_CRR', 
+            '設計地震_FS', '設計地震_LPI',
+            
+            # 中小地震詳細參數
+            '中小地震_Mw', '中小地震_A_value(g)', '中小地震_SD_S', '中小地震_SM_S',
+            '中小地震_MSF', '中小地震_rd', '中小地震_CSR', '中小地震_CRR', 
+            '中小地震_FS', '中小地震_LPI',
+            
+            # 最大地震詳細參數
+            '最大地震_Mw', '最大地震_A_value(g)', '最大地震_SD_S', '最大地震_SM_S',
+            '最大地震_MSF', '最大地震_rd', '最大地震_CSR', '最大地震_CRR', 
+            '最大地震_FS', '最大地震_LPI',
+            
+            # 額外資訊
+            '單位重(t/m³)', '含水量(%)', '液性限度(%)', '分析時間'
         ]
-
-        headers = []
-        for f in model_fields:
-            headers.append(f.verbose_name if hasattr(f, "verbose_name") else f.name)
-
         writer.writerow(headers)
-
-        # 取出結果
+        
+        # 獲取分析結果
         results = AnalysisResult.objects.filter(
             soil_layer__borehole__project=project
-        ).select_related("soil_layer", "soil_layer__borehole").order_by(
-            "soil_layer__borehole__borehole_id", "soil_layer__top_depth", "analysis_method"
+        ).select_related('soil_layer', 'soil_layer__borehole').order_by(
+            'soil_layer__borehole__borehole_id', 'soil_layer__top_depth', 'analysis_method'
         )
-
+        
+        # 應用方法篩選
         if method_filter:
             results = results.filter(analysis_method=method_filter)
-
-        # 🔹 寫入所有欄位的值
+        
+        # ===== 修改：寫入包含所有參數的詳細資料行 =====
         for result in results:
-            row = []
-            for f in model_fields:
-                value = getattr(result, f.name, "")
-                # 關聯欄位特別處理
-                if isinstance(f, ForeignKey) or isinstance(f, OneToOneField):
-                    value = str(value) if value else ""
-                row.append(value if value is not None else "")
+            soil_layer = result.soil_layer
+            borehole = soil_layer.borehole
+            
+            # 安全取值函數
+            def safe_value(val):
+                if val is None:
+                    return ''
+                elif isinstance(val, float):
+                    return f"{val:.6f}" if abs(val) < 1000 else f"{val:.2f}"
+                else:
+                    return str(val)
+            
+            row = [
+                # 基本資訊
+                borehole.borehole_id,
+                result.analysis_method,
+                safe_value(soil_layer.top_depth),
+                safe_value(soil_layer.bottom_depth),
+                safe_value(soil_layer.thickness) if hasattr(soil_layer, 'thickness') else safe_value(soil_layer.bottom_depth - soil_layer.top_depth),
+                soil_layer.uscs or '',
+                safe_value(soil_layer.spt_n),
+                safe_value(soil_layer.plastic_index),
+                safe_value(soil_layer.fines_content),
+                soil_layer.sample_id or '',
+                
+                # 座標和基本參數
+                safe_value(borehole.twd97_x),
+                safe_value(borehole.twd97_y),
+                safe_value(borehole.surface_elevation),
+                safe_value(borehole.water_depth),
+                
+                # 地震參數
+                borehole.city or '',
+                safe_value(borehole.base_mw),
+                safe_value(borehole.sds),
+                safe_value(borehole.sms),
+                borehole.data_source or '',
+                borehole.nearby_fault or '',
+                
+                # 中間計算參數
+                safe_value(result.soil_depth),
+                safe_value(result.mid_depth),
+                safe_value(result.analysis_depth),
+                safe_value(result.sigma_v),
+                safe_value(result.sigma_v_csr),
+                safe_value(result.sigma_v_crr),
+                safe_value(result.n60),
+                safe_value(result.n1_60),
+                safe_value(result.n1_60cs),
+                safe_value(result.vs),
+                safe_value(result.crr_7_5),
+                
+                # 設計地震詳細參數
+                safe_value(result.mw_design),
+                safe_value(result.a_value_design),
+                safe_value(result.sd_s_design),
+                safe_value(result.sm_s_design),
+                safe_value(result.msf_design),
+                safe_value(result.rd_design),
+                safe_value(result.csr_design),
+                safe_value(result.crr_design),
+                safe_value(result.fs_design),
+                safe_value(result.lpi_design),
+                
+                # 中小地震詳細參數
+                safe_value(result.mw_mid),
+                safe_value(result.a_value_mid),
+                safe_value(result.sd_s_mid),
+                safe_value(result.sm_s_mid),
+                safe_value(result.msf_mid),
+                safe_value(result.rd_mid),
+                safe_value(result.csr_mid),
+                safe_value(result.crr_mid),
+                safe_value(result.fs_mid),
+                safe_value(result.lpi_mid),
+                
+                # 最大地震詳細參數
+                safe_value(result.mw_max),
+                safe_value(result.a_value_max),
+                safe_value(result.sd_s_max),
+                safe_value(result.sm_s_max),
+                safe_value(result.msf_max),
+                safe_value(result.rd_max),
+                safe_value(result.csr_max),
+                safe_value(result.crr_max),
+                safe_value(result.fs_max),
+                safe_value(result.lpi_max),
+                
+                # 額外資訊
+                safe_value(soil_layer.unit_weight),
+                safe_value(soil_layer.water_content),
+                safe_value(soil_layer.liquid_limit),
+                result.created_at.strftime('%Y-%m-%d %H:%M:%S') if result.created_at else ''
+            ]
             writer.writerow(row)
-
+        
         return response
-
+        
     except Exception as e:
         messages.error(request, f'匯出結果時發生錯誤：{str(e)}')
         return redirect('liquefaction:results', pk=project.pk)
-
+    
 def api_seismic_data(request):
     """API：獲取地震參數資料"""
     city = request.GET.get('city', '')
