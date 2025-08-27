@@ -371,6 +371,9 @@ class AnalysisResult(models.Model):
     
     # 液化抗力
     crr_7_5 = models.FloatField(null=True, blank=True, verbose_name="CRR7.5")
+    # JRA 特殊參數
+    c1_factor = models.FloatField(null=True, blank=True, verbose_name="C1係數")
+    c2_factor = models.FloatField(null=True, blank=True, verbose_name="C2係數")
     
     # 設計地震結果
     mw_design = models.FloatField(null=True, blank=True, verbose_name="設計地震規模")

@@ -1571,7 +1571,7 @@ class JRA:
             return "-"
     # 計算 Na    
     def compute_Na(self, row):
-        """計算 Na - JRA1996版本"""
+        """計算 Na - JRA1996版本 - 保持單一返回值"""
         N1_72 = self.compute_N1_72(row)
         FC = row['FC']
         soil_class = row.get('統一土壤分類', '')
@@ -1600,7 +1600,7 @@ class JRA:
                     C1 = FC / 20 - 1
                     C2 = (FC - 10) / 18
                 
-                Na = C1 * N1_72 + C2
+                Na = C1 * N1_72_parsed + C2
                 
             elif soil_class in cohesive_soils:
                 # 黏質土
@@ -1616,9 +1616,11 @@ class JRA:
                     else:
                         C1 = FC / 20 - 1
                         C2 = (FC - 10) / 18
-                    Na = C1 * N1_72 + C2
+                    Na = C1 * N1_72_parsed + C2
                 else:
-                    Na = (1 - 0.36 * np.log10(D50 / 2)) * N1_72
+                    C1 = 1 - 0.36 * np.log10(D50 / 2)
+                    C2 = 0
+                    Na = C1 * N1_72_parsed
             else:
                 # 其他土壤類型，使用砂質土公式
                 if 0 <= FC < 10:
@@ -1630,14 +1632,69 @@ class JRA:
                 else:
                     C1 = FC / 20 - 1
                     C2 = (FC - 10) / 18
-                Na = C1 * N1_72 + C2
+                Na = C1 * N1_72_parsed + C2
             
-            return format_result(Na)  # 只回傳Na值，不回傳C1, C2
+            return format_result(Na)
             
         except (ValueError, TypeError, ZeroDivisionError) as e:
             print(f"計算 Na 時發生錯誤: {e}, FC = {FC}, N1_72 = {N1_72}")
             return "-"
-
+    def compute_C1_C2(self, row):
+        """計算 C1, C2 係數 - JRA1996版本"""
+        FC = row['FC']
+        soil_class = row.get('統一土壤分類', '')
+        
+        try:
+            # 判斷土壤類型
+            sandy_soils = ["SW", "SP", "SM", "SC", "GW", "GP", "GM", "GC"]
+            cohesive_soils = ["ML", "CL", "OL", "MH", "CH", "OH"]
+            
+            if soil_class in sandy_soils:
+                # 砂質土
+                if 0 <= FC < 10:
+                    C1 = 1
+                    C2 = 0
+                elif 10 <= FC < 60:
+                    C1 = (FC + 40) / 50
+                    C2 = (FC - 10) / 18
+                else:  # FC >= 60
+                    C1 = FC / 20 - 1
+                    C2 = (FC - 10) / 18
+                    
+            elif soil_class in cohesive_soils:
+                # 黏質土
+                D50 = row.get('D50', None)
+                if D50 is None or pd.isna(D50):
+                    # 使用砂質土公式作為替代
+                    if 0 <= FC < 10:
+                        C1 = 1
+                        C2 = 0
+                    elif 10 <= FC < 60:
+                        C1 = (FC + 40) / 50
+                        C2 = (FC - 10) / 18
+                    else:
+                        C1 = FC / 20 - 1
+                        C2 = (FC - 10) / 18
+                else:
+                    C1 = 1 - 0.36 * np.log10(D50 / 2)
+                    C2 = 0
+            else:
+                # 其他土壤類型，使用砂質土公式
+                if 0 <= FC < 10:
+                    C1 = 1
+                    C2 = 0
+                elif 10 <= FC < 60:
+                    C1 = (FC + 40) / 50
+                    C2 = (FC - 10) / 18
+                else:
+                    C1 = FC / 20 - 1
+                    C2 = (FC - 10) / 18
+            
+            return format_result(C1), format_result(C2)
+            
+        except (ValueError, TypeError, ZeroDivisionError) as e:
+            print(f"計算 C1, C2 時發生錯誤: {e}, FC = {FC}")
+            return "-", "-"
     def calculate_FS(self, row, scenario='Design'):
         """計算液化安全係數 (FS) 及相關參數"""
         
@@ -1699,7 +1756,7 @@ class JRA:
                 
                 # 條件(3)：粒徑檢查（有資料時才檢查，沒資料就忽略）
                 grain_size_condition = True  # 預設通過
-                
+                """                
                 # 檢查D50（有資料才檢查）
                 D50 = row.get('D50', None)
                 if D50 is not None and not pd.isna(D50) and D50 != "" and str(D50).strip() != "":
@@ -1727,12 +1784,22 @@ class JRA:
                         print(f"      D10資料無法解析，忽略此條件")
                 else:
                     print(f"      D10無資料，忽略此條件")
-                
-                # 所有條件都滿足才進行液化評估
+                """                
+            #條件(4): 
+            # 所有條件都滿足才進行液化評估
+            
+
+
                 if fc_condition and grain_size_condition:
-                    should_evaluate = True
+                        should_evaluate = True
+            soil_code_valid = (
+                str(soil_class).startswith("G") or
+                str(soil_class).startswith("S") or
+                str(soil_class) == "CL-ML" or
+                str(soil_class).startswith("M")
+            )
         # 檢查是否符合任一 FS=3 的條件
-        should_set_fs_3 = depth_over_20 
+        should_set_fs_3 = depth_over_20 or not soil_code_valid 
         
         if should_set_fs_3:
             
@@ -1751,7 +1818,7 @@ class JRA:
                 sigma_v = row.get('累計sigmav')
                 
                 if pd.notna(sigma_v_csr) and pd.notna(sigma_v) and rd != "-":
-                    CSR = parse_numeric_value(0.65 * (A_value) * (sigma_v / sigma_v_csr) * rd )
+                    CSR = parse_numeric_value(  (A_value) * (sigma_v / sigma_v_csr) * rd )
                 else:
                     CSR = "-"
                 
@@ -1814,7 +1881,7 @@ class JRA:
             rd = max(0.1, min(1.0, rd))  # 確保 rd 在合理範圍內
             
             # 4. 計算 CSR (反覆剪應力比)
-            CSR = parse_numeric_value(0.65 * (A_value) * (sigma_v / sigma_v_csr) * rd )
+            CSR = parse_numeric_value( (A_value) * (sigma_v / sigma_v_csr) * rd )
             
             # 5. 計算調整後的 CRR - JRA1996版本
             if Na == "-" or pd.isna(Na):
@@ -1858,6 +1925,7 @@ class JRA:
                 'CRR': "-", 
                 'FS': "-"
             }
+    
     def calculate_LPI_single_layer(self, row, scenario):
         """計算單層液化潛能指數 LPI"""
         fs_col = f'FS_{scenario}'
@@ -2504,8 +2572,14 @@ class JRA:
 
                 well_df['N_72'] = well_df.apply(self.compute_N72, axis=1)
                 well_df['N1_72'] = well_df.apply(self.compute_N1_72, axis=1)  
+                                
+                # 保持原有的 Na 計算
                 well_df['Na'] = well_df.apply(self.compute_Na, axis=1)
 
+                # 另外計算 C1, C2
+                c1_c2_results = well_df.apply(self.compute_C1_C2, axis=1)
+                well_df['C1'] = [result[0] for result in c1_c2_results]
+                well_df['C2'] = [result[1] for result in c1_c2_results]
                 
                 # 計算三種地震情境的液化參數
                 for scenario, scenario_data in earthquake_scenarios.items():

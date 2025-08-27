@@ -707,7 +707,9 @@ def export_results(request, pk):
         ]
 
         # 根據分析方法添加不同的N值相關欄位
-        if method_filter == 'AIJ':
+        if method_filter == 'JRA':
+            headers.extend(['N72', 'N1_72', 'C1', 'C2', 'Na', '剪力波速Vs(m/s)', 'CRR_7.5'])
+        elif method_filter == ['AIJ']:
             headers.extend(['N72', 'N1_72', 'Na', '剪力波速Vs(m/s)', 'CRR_7.5'])
         else:
             headers.extend(['N60', 'N1_60', 'N1_60cs', '剪力波速Vs(m/s)', 'CRR_7.5'])

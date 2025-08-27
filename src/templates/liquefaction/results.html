@@ -4,7 +4,7 @@
 {% load static %}
 <script>
 function getColumnHeaders(method) {
-    if (method === 'AIJ') {
+    if (method === 'AIJ' || method ===  'JRA') {
         return {
             'n_param1': 'N72',
             'n_param2': 'N1_72', 
@@ -14,7 +14,7 @@ function getColumnHeaders(method) {
         return {
             'n_param1': 'N60',
             'n_param2': 'N1_60',
-            'n_param3': 'N₁₆₀cs'
+            'n_param3': 'N₁60cs'
         };
     }
 }
@@ -292,7 +292,13 @@ function getColumnHeaders(method) {
                                 <th rowspan="2">土壤<br>分類</th>
                                 <th rowspan="2">SPT-N</th>
                                 <!-- 根據分析方法顯示不同欄位 -->
-                                {% if method_filter == 'AIJ' %}
+                                {% if method_filter == 'JRA' %}
+                                <th rowspan="2">N72</th>
+                                <th rowspan="2">N1_72</th>
+                                <th rowspan="2">C1</th>
+                                <th rowspan="2">C2</th>
+                                <th rowspan="2">Na</th>
+                                {% elif method_filter == 'AIJ' %}
                                 <th rowspan="2">N72</th>
                                 <th rowspan="2">N1_72</th>
                                 <th rowspan="2">Na</th>
@@ -335,10 +341,14 @@ function getColumnHeaders(method) {
                                 <!-- 🔴 修改後的N值顯示邏輯 -->
                                 <td>{{ result.soil_layer.spt_n|floatformat:0|default:"-" }}</td>
                                 
-                                {% if method_filter == 'AIJ' %}
-                                <td>{{ result.n60|floatformat:1|default:"-" }}</td>  <!-- 這裡存的是N72 -->
-                                <td>{{ result.n1_60|floatformat:1|default:"-" }}</td>  <!-- 這裡存的是N1_72 -->
-                                <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>  <!-- 這裡存的是Na -->
+                                {% if method_filter == 'AIJ' or method_filter == 'JRA' %}
+                                <td>{{ result.n60|floatformat:1|default:"-" }}</td>  <!-- N72 -->
+                                <td>{{ result.n1_60|floatformat:1|default:"-" }}</td>  <!-- N1_72 -->
+                                {% if method_filter == 'JRA' %}
+                                <td>{{ result.c1_factor|floatformat:3|default:"-" }}</td>
+                                <td>{{ result.c2_factor|floatformat:3|default:"-" }}</td>
+                                {% endif %}
+                                <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>  <!-- Na -->
                                 {% else %}
                                 <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>
                                 {% endif %}
