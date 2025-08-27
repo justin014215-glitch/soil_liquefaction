@@ -1013,11 +1013,11 @@ def get_earthquake_parameters_from_wells(df: pd.DataFrame, use_fault_data: bool 
 
 # NCEER液化分析類別
 class NCEER:
-    def __init__(self, default_em = 72):
+    def __init__(self, default_em = 72, unit_weight_conversion_factor=1.0):
         """初始化NCEER分析器"""
         self.g = 9.81  # 重力加速度 (m/s²)
         self.Pa = 100  # 大氣壓力 (t/m²)
-        
+        self.unit_weight_conversion_factor = unit_weight_conversion_factor  # 新增單位重轉換係數
         # Fa係數查表
         self.fa_table = {
             "第一類地盤": {
@@ -1706,7 +1706,7 @@ class NCEER:
                 
                 # 計算 rd (應力折減係數)
                 z = depth
-                rd = (1 - 0.4113 * np.sqrt(z) + 0.04052 * z + 0.001753 * (z ** 1.5) ) / (1-0.4117 * np.sqrt(z) + 0.05729 * z - 0.006205 * (z ** 1.5) + 0.001210 * (z ** 2))
+                rd = (1 - 0.4133 * np.sqrt(z) + 0.04052 * z + 0.001753 * (z ** 1.5) ) / (1-0.4177 * np.sqrt(z) + 0.05729 * z - 0.006205 * (z ** 1.5) + 0.001210 * (z ** 2))
          
                 # 計算 CSR 和 CRR
                 sigma_v_csr = row.get('sigma_v_CSR')
@@ -1776,7 +1776,7 @@ class NCEER:
             # 2. 計算 MSF (規模修正因子)
             MSF = (mw_value / 7.5) ** (-2.56)
             z = depth
-            rd = (1 - 0.4113 * np.sqrt(z) + 0.04052 * z + 0.001753 * (z ** 1.5) ) / (1-0.4117 * np.sqrt(z) + 0.05729 * z - 0.006205 * (z ** 1.5) + 0.001210 * (z ** 2))
+            rd = (1 - 0.4133 * np.sqrt(z) + 0.04052 * z + 0.001753 * (z ** 1.5) ) / (1-0.4177 * np.sqrt(z) + 0.05729 * z - 0.006205 * (z ** 1.5) + 0.001210 * (z ** 2))
          
 
             

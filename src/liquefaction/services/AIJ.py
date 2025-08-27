@@ -1007,11 +1007,11 @@ def get_earthquake_parameters_from_wells(df: pd.DataFrame, use_fault_data: bool 
 
 # AIJ液化分析類別
 class AIJ:
-    def __init__(self, default_em = 72):
+    def __init__(self, default_em = 72, unit_weight_conversion_factor=1.0):
         """初始化AIJ分析器"""
         self.g = 9.81  # 重力加速度 (m/s²)
         self.Pa = 100  # 大氣壓力 (t/m²)
-        
+        self.unit_weight_conversion_factor = unit_weight_conversion_factor  # 新增單位重轉換係數
         # Fa係數查表
         self.fa_table = {
             "第一類地盤": {

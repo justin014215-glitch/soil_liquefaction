@@ -349,6 +349,28 @@ class CSVParser:
                 self.warnings.append(f"鑽孔 {borehole_id}: 深度邏輯錯誤，上限深度應小於下限深度")
                 return None
             # 檢查取樣編號篩選條件
+            # ===== 新增：計算細料含量 FC =====
+            if 'fines_content' not in soil_layer or not soil_layer.get('fines_content'):
+                silt = soil_layer.get('silt_percent', 0)
+                clay = soil_layer.get('clay_percent', 0)
+
+                # 將可能的字串轉換成浮點數
+                try:
+                    if isinstance(silt, str):
+                        silt = float(silt) if silt.replace('.', '', 1).isdigit() else 0
+                    if isinstance(clay, str):
+                        clay = float(clay) if clay.replace('.', '', 1).isdigit() else 0
+                except (ValueError, AttributeError):
+                    silt = 0
+                    clay = 0
+
+                # 若 silt 或 clay 都有值，計算 FC
+                if silt or clay:
+                    soil_layer['fines_content'] = silt + clay
+                    self.warnings.append(
+                        f"鑽孔 {borehole_id}: 自動計算細料含量 = 粉土({silt}) + 黏土({clay}) = {soil_layer['fines_content']}"
+                    )
+            # ===== FC 計算結束 =====
 
             if 'sample_id' in self.column_mapping:
                 sample_id_value = row[self.column_mapping['sample_id']]
@@ -479,6 +501,7 @@ class CSVParser:
         except Exception as e:
             self.errors.append(f"鑽孔 {borehole_id} 土層資料解析錯誤: {str(e)}")
             return None
+    
     def _validate_data(self) -> None:
         """資料驗證"""
         # 驗證座標範圍（台灣地區）
