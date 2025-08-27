@@ -281,6 +281,19 @@ class SoilLayer(models.Model):
     
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="建立時間")
     
+    # 新增欄位
+    aashto_classification = models.CharField(max_length=10, blank=True, verbose_name="AASHTO分類")
+    plastic_limit = models.FloatField(null=True, blank=True, verbose_name="塑性限度 (%)")
+    shrinkage_index = models.FloatField(null=True, blank=True, verbose_name="縮性指數 (%)")
+    dry_unit_weight = models.FloatField(null=True, blank=True, verbose_name="乾單位重 (t/m³)")
+    water_content_rock = models.FloatField(null=True, blank=True, verbose_name="含水量(岩石) (%)")
+    specific_gravity_rock = models.FloatField(null=True, blank=True, verbose_name="比重(岩石)")
+    d50 = models.FloatField(null=True, blank=True, verbose_name="D50 (mm)")
+    core_length = models.FloatField(null=True, blank=True, verbose_name="岩心長度 (cm)")
+    core_diameter = models.FloatField(null=True, blank=True, verbose_name="岩心直徑 (cm)")
+    ucs = models.FloatField(null=True, blank=True, verbose_name="單軸壓縮強度 (kg/cm²)")
+    
+
     class Meta:
         verbose_name = "土層資料"
         verbose_name_plural = "土層資料"
