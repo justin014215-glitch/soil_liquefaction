@@ -67,6 +67,9 @@
                 <a href="{% url 'liquefaction:results' project.pk %}?borehole={{ borehole.borehole_id }}" class="btn btn-success">
                     <i class="fas fa-chart-line"></i> 查看分析結果
                 </a>
+                <a href="{% url 'liquefaction:download_borehole_report' project.pk borehole.borehole_id %}" class="btn btn-primary">
+                    <i class="fas fa-download"></i> 下載報表資料夾
+                </a>
                 {% endif %}
             </div>
         </div>
@@ -244,7 +247,13 @@
                                 </td>
                                 <td>{{ layer.water_content|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.liquid_limit|floatformat:1|default:"-" }}</td>
-                                <td>{{ layer.plastic_index|floatformat:1|default:"-" }}</td>
+                                <td>
+                                    {% if layer.plastic_index_original == 'NP' %}
+                                        <span class="badge bg-secondary">NP</span>
+                                    {% else %}
+                                        {{ layer.plastic_index|floatformat:1|default:"-" }}
+                                    {% endif %}
+                                </td>
                                 <td>{{ layer.specific_gravity|floatformat:2|default:"-" }}</td>
                                 <td>{{ layer.fines_content|floatformat:1|default:"-" }}</td>
                                 <td>{{ layer.gravel_percent|floatformat:1|default:"-" }}</td>
@@ -307,8 +316,10 @@
                                 <th>統體單位重<br>(t/m³)</th>
                                 <th>TWD97_X</th>
                                 <th>TWD97_Y</th>
-                                <th>地表高程<br>(m)</th>
+                                <th>細料(%)</th>
+                                <th>塑性指數</th>
                                 <th>地下水位<br>(m)</th>
+                                <th>地表高程<br>(m)</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -329,9 +340,18 @@
                                     {% else %}-{% endif %}
                                 </td>
                                 <td>{{ layer.unit_weight|floatformat:2|default:"-" }}</td>
-                                <td>{{ layer.water_content|floatformat:1|default:"-" }}</td>
+                                <td>{{ layer.twd97_x|default:borehole.twd97_x|floatformat:2 }}</td>
+                                <td>{{ layer.twd97_y|default:borehole.twd97_y|floatformat:2 }}</td>
                                 <td>{{ layer.fines_content|floatformat:1|default:"-" }}</td>
-                                <td>{{ layer.plastic_index|floatformat:1|default:"-" }}</td>
+                                <td>
+                                    {% if layer.plastic_index_original == 'NP' %}
+                                        <span class="badge bg-secondary">NP</span>
+                                    {% else %}
+                                        {{ layer.plastic_index|floatformat:1|default:"-" }}
+                                    {% endif %}
+                                </td>
+                                <td>{{ layer.water_depth|default:borehole.water_depth|floatformat:2 }}</td>
+                                <td>{{ layer.ground_elevation|default:borehole.surface_elevation|floatformat:2|default:"-" }}</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -412,3 +432,4 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 </script>
 {% endblock %}
+

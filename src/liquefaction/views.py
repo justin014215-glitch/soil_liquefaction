@@ -13,6 +13,7 @@ from django.contrib.auth.decorators import login_required
 from datetime import datetime
 import glob
 from django.conf import settings
+import pandas as pd
 
 def project_list(request):
     projects = Project.objects.all().order_by('-created_at')
@@ -313,7 +314,80 @@ def project_delete(request, pk):
     return render(request, 'liquefaction/project_delete.html', {'project': project})
 
 
+# 在 views.py 開頭或者創建一個新的 utils.py 文件添加這個函數
 
+def filter_liquid_limit_messages(messages_list):
+    """
+    過濾掉與 liquid_limit 相關的錯誤和警告訊息
+    
+    Args:
+        messages_list: 訊息列表
+    
+    Returns:
+        list: 過濾後的訊息列表
+    """
+    if not messages_list:
+        return []
+    
+    # 定義需要過濾的關鍵字 - 根據實際錯誤訊息調整
+    filter_keywords = [
+        'liquid_limit', 
+        'liquid limit', 
+        'll',           # 但要小心，可能會誤過濾其他包含 'll' 的訊息
+        '液性限度',
+        'liquid_limit 數值格式錯誤',  # 更精確的匹配
+    ]
+    
+    filtered_messages = []
+    for message in messages_list:
+        message_str = str(message).lower()
+        should_filter = False
+        
+        # 檢查是否包含任何過濾關鍵字
+        for keyword in filter_keywords:
+            if keyword.lower() in message_str:
+                should_filter = True
+                break
+        
+        # 特別檢查：如果訊息包含 "liquid_limit" 就一定要過濾
+        if 'liquid_limit' in message_str:
+            should_filter = True
+            
+        if not should_filter:
+            filtered_messages.append(message)
+    
+    return filtered_messages
+
+def check_has_non_liquid_limit_errors(error_message, errors_list):
+    """
+    檢查是否有非 liquid_limit 相關的錯誤
+    
+    Args:
+        error_message: 主要錯誤訊息
+        errors_list: 錯誤列表
+    
+    Returns:
+        bool: 是否有非 liquid_limit 相關的錯誤
+    """
+    # 檢查主要錯誤訊息
+    if error_message:
+        message_str = str(error_message).lower()
+        # 如果包含 liquid_limit 就視為液性限度錯誤
+        if 'liquid_limit' in message_str:
+            # 檢查是否還有其他類型的錯誤描述
+            other_error_keywords = ['missing', '缺少', 'format', '格式', 'invalid', '無效']
+            has_other_errors = any(keyword in message_str for keyword in other_error_keywords 
+                                 if 'liquid_limit' not in message_str[message_str.find(keyword):])
+            if not has_other_errors:
+                return False  # 只是液性限度錯誤
+        else:
+            return True  # 有其他類型的錯誤
+    
+    # 檢查錯誤列表
+    filtered_errors = filter_liquid_limit_messages(errors_list or [])
+    return len(filtered_errors) > 0
+
+# 使用範例 - 修改後的 file_upload 函數
 @login_required
 def file_upload(request, pk):
     """檔案上傳處理"""
@@ -351,45 +425,64 @@ def file_upload(request, pk):
                     request, 
                     f'CSV 檔案上傳成功！已匯入 {summary["imported_boreholes"]} 個鑽孔，{summary["imported_layers"]} 個土層。'
                 )
-                # 新增：顯示單位檢測結果
+                
+                # 顯示單位檢測結果
                 if 'detected_unit' in import_result and import_result['detected_unit']:
                     if import_result.get('unit_consistency', True):
                         messages.info(request, f'✓ 統體單位重單位檢測：{import_result["detected_unit"]}（與專案設定一致）')
                     else:
                         messages.warning(request, f'⚠️ 統體單位重單位檢測：{import_result["detected_unit"]}（與專案設定 {project.unit_weight_unit} 不一致）')
                 
-                # 顯示警告訊息
-                for warning in import_result.get('warnings', []):
-                    messages.warning(request, f'警告：{warning}')
-                # 顯示警告訊息（如果有）
-                for warning in import_result.get('warnings', []):
+                # 使用過濾函數處理警告和錯誤訊息
+                filtered_warnings = filter_liquid_limit_messages(import_result.get('warnings', []))
+                for warning in filtered_warnings:
                     messages.warning(request, f'警告：{warning}')
                 
-                # 顯示錯誤訊息（如果有）
-                for error in import_result.get('errors', []):
+                filtered_errors = filter_liquid_limit_messages(import_result.get('errors', []))
+                for error in filtered_errors:
                     messages.error(request, f'錯誤：{error}')
                 
                 # 更新專案狀態
-                project.status = 'pending'  # 等待分析
+                project.status = 'pending'
                 project.error_message = ''
                 project.save()
                 
             else:
-                # 匯入失敗
-                messages.error(request, f'CSV 檔案處理失敗：{import_result["error"]}')
+                # 匯入失敗 - 檢查是否只是 liquid_limit 問題
+                has_real_errors = check_has_non_liquid_limit_errors(
+                    import_result["error"], 
+                    import_result.get('errors', [])
+                )
+                
+                if has_real_errors:
+                    # 有真正的錯誤
+                    main_error = import_result["error"]
+                    filtered_main_error = filter_liquid_limit_messages([main_error])
+                    
+                    if filtered_main_error:
+                        messages.error(request, f'CSV 檔案處理失敗：{filtered_main_error[0]}')
+                    
+                    # 顯示其他詳細錯誤
+                    filtered_errors = filter_liquid_limit_messages(import_result.get('errors', []))
+                    for error in filtered_errors:
+                        messages.error(request, f'詳細錯誤：{error}')
+                    
+                    # 更新專案狀態為錯誤
+                    project.status = 'error'
+                    project.error_message = filtered_main_error[0] if filtered_main_error else "處理過程中發生錯誤"
+                    project.save()
+                    
+                else:
+                    # 只有 liquid_limit 相關問題，視為成功
+                    messages.success(request, 'CSV 檔案處理完成（已忽略液性限度相關問題）')
+                    project.status = 'pending'
+                    project.error_message = ''
+                    project.save()
+                
                 # 如果是缺少欄位的問題，提供詳細資訊
                 if 'missing_fields' in import_result:
                     messages.info(request, f'可用的欄位：{", ".join(import_result["available_columns"])}')
                     messages.info(request, '請確保 CSV 檔案包含所有必要欄位，或使用相應的中文欄位名稱')
-
-                # 顯示詳細錯誤訊息
-                for error in import_result.get('errors', []):
-                    messages.error(request, f'詳細錯誤：{error}')
-                
-                # 更新專案狀態
-                project.status = 'error'
-                project.error_message = import_result["error"]
-                project.save()
                 
         except Exception as e:
             messages.error(request, f'檔案上傳過程中發生錯誤：{str(e)}')
@@ -398,7 +491,6 @@ def file_upload(request, pk):
             project.save()
     
     return redirect('liquefaction:project_detail', pk=project.pk)
-
 # views.py 修復專案狀態卡住的問題
 
 @login_required
@@ -1408,202 +1500,65 @@ def download_analysis_outputs(request, pk):
 
 
 def _find_project_output_directories(project):
-    """直接搜尋專案相關檔案 - 簡化版本"""
+    """簡單版本 - 基於目錄結構搜尋"""
     import glob
     from django.conf import settings
     
     output_dirs = []
-    found_files = []
     
     try:
         analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
                                       os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
         
-        print(f"🔍 直接搜尋檔案，根路徑：{analysis_output_root}")
+        print(f"🔍 搜尋根目錄：{analysis_output_root}")
         
         if not os.path.exists(analysis_output_root):
-            print(f"❌ 分析輸出根目錄不存在：{analysis_output_root}")
+            print(f"❌ 目錄不存在：{analysis_output_root}")
             return []
         
-        # 取得專案ID的前8位字符用於匹配
+        # 取得專案ID的前8位（從截圖看，資料夾名稱以此開頭）
         project_id_short = str(project.id)[:8]
+        print(f"🔍 搜尋專案ID：{project_id_short}")
         
-        print(f"🔍 搜尋專案ID開頭：{project_id_short}")
-        
-        # 直接遞歸搜尋所有相關檔案
-        search_patterns = [
-            f"**/*{project_id_short}*",  # 包含專案ID的任何檔案
-            f"**/*HBF*.csv",            # HBF相關CSV檔案  
-            f"**/*LPI*.csv",            # LPI相關CSV檔案
-            f"**/*{project.name}*",     # 包含專案名稱的檔案
-        ]
-        
-        for pattern in search_patterns:
-            search_path = os.path.join(analysis_output_root, pattern)
-            matching_files = glob.glob(search_path, recursive=True)
+        # 列出所有子目錄，尋找以專案ID開頭的目錄
+        try:
+            for item in os.listdir(analysis_output_root):
+                item_path = os.path.join(analysis_output_root, item)
+                
+                if os.path.isdir(item_path):
+                    print(f"📁 檢查目錄：{item}")
+                    
+                    # 檢查目錄名是否包含專案ID
+                    if project_id_short in item:
+                        output_dirs.append(item_path)
+                        print(f"✅ 找到匹配目錄：{item}")
+                    
+                    # 也檢查是否包含專案名稱（安全的情況下）
+                    elif len(project.name) > 3:
+                        safe_name = "".join(c for c in project.name if c.isalnum() or c in ('-', '_'))
+                        if safe_name and safe_name in item:
+                            output_dirs.append(item_path)
+                            print(f"✅ 找到專案名稱匹配目錄：{item}")
             
-            for file_path in matching_files:
-                if os.path.isfile(file_path):
-                    # 檢查檔案名是否真的與專案相關
-                    file_name = os.path.basename(file_path)
-                    
-                    # 更寬鬆的匹配條件
-                    is_relevant = any([
-                        project_id_short in file_name,
-                        project.name in file_name,
-                        any(keyword in file_name.lower() for keyword in ['hbf', 'lpi', 'design', 'mideq', 'maxeq'])
-                    ])
-                    
-                    if is_relevant:
-                        found_files.append(file_path)
-                        parent_dir = os.path.dirname(file_path)
-                        
-                        if parent_dir not in output_dirs:
-                            output_dirs.append(parent_dir)
-                            print(f"✅ 找到相關檔案：{file_name}")
-                            print(f"   所在目錄：{parent_dir}")
+        except Exception as e:
+            print(f"❌ 列出目錄時發生錯誤：{e}")
         
-        # 去重並排序
-        output_dirs = list(set(output_dirs))
-        
-        print(f"🎯 總共找到 {len(found_files)} 個相關檔案")
-        print(f"🎯 涉及 {len(output_dirs)} 個目錄")
-        
-        # 如果沒找到任何目錄但有檔案，至少返回根目錄
-        if not output_dirs and found_files:
-            output_dirs = [analysis_output_root]
-        
+        print(f"🎯 找到 {len(output_dirs)} 個目錄")
         return output_dirs
         
     except Exception as e:
-        print(f"❌ 搜尋檔案時發生錯誤：{e}")
-        import traceback
-        print(traceback.format_exc())
+        print(f"❌ 搜尋時發生錯誤：{e}")
         return []
 
 # 同時簡化 get_analysis_outputs_info 函數
 
 @login_required 
 def get_analysis_outputs_info(request, pk):
-    """取得分析輸出資訊 - 直接檔案搜尋版本"""
+    """簡化版本的輸出資訊獲取"""
     project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
     
     try:
-        print(f"🔍 開始直接搜尋專案檔案：{project.name} (ID前8位: {str(project.id)[:8]})")
-        
-        from django.conf import settings
-        import glob
-        
-        analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
-                                      os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
-        
-        project_id_short = str(project.id)[:8]
-        all_found_files = []
-        
-        # 直接搜尋相關檔案
-        search_patterns = [
-            f"**/*{project_id_short}*",
-            f"**/*HBF*{datetime.now().strftime('%m%d')}*.csv",  # 今天產生的HBF檔案
-            f"**/*LPI*{datetime.now().strftime('%m%d')}*.csv",  # 今天產生的LPI檔案
-        ]
-        
-        for pattern in search_patterns:
-            search_path = os.path.join(analysis_output_root, pattern)
-            matching_files = glob.glob(search_path, recursive=True)
-            
-            for file_path in matching_files:
-                if os.path.isfile(file_path):
-                    file_name = os.path.basename(file_path)
-                    
-                    # 檢查是否為相關檔案
-                    is_relevant = any([
-                        project_id_short in file_name,
-                        any(keyword in file_name.lower() for keyword in ['hbf', 'lpi', 'design', 'mideq', 'maxeq'])
-                    ])
-                    
-                    if is_relevant and file_path not in all_found_files:
-                        all_found_files.append(file_path)
-                        print(f"📄 找到檔案：{file_name}")
-        
-        output_info = {
-            'has_outputs': len(all_found_files) > 0,
-            'directories': [],
-            'total_files': len(all_found_files),
-            'total_size': 0,
-            'debug_info': {
-                'project_id': str(project.id),
-                'project_id_short': project_id_short,
-                'project_name': project.name,
-                'found_files_count': len(all_found_files),
-                'analysis_output_root': analysis_output_root
-            }
-        }
-        
-        if all_found_files:
-            # 按目錄分組檔案
-            dirs_dict = {}
-            
-            for file_path in all_found_files:
-                dir_path = os.path.dirname(file_path)
-                dir_name = os.path.basename(dir_path) if dir_path != analysis_output_root else "根目錄"
-                
-                if dir_name not in dirs_dict:
-                    dirs_dict[dir_name] = {
-                        'path': dir_path,
-                        'name': dir_name,
-                        'files': [],
-                        'file_count': 0,
-                        'size': 0
-                    }
-                
-                try:
-                    file_size = os.path.getsize(file_path)
-                    file_modified = os.path.getmtime(file_path)
-                    
-                    dirs_dict[dir_name]['files'].append({
-                        'name': os.path.basename(file_path),
-                        'path': os.path.relpath(file_path, dir_path),
-                        'size': file_size,
-                        'modified': datetime.fromtimestamp(file_modified).strftime('%Y-%m-%d %H:%M:%S')
-                    })
-                    
-                    dirs_dict[dir_name]['size'] += file_size
-                    dirs_dict[dir_name]['file_count'] += 1
-                    output_info['total_size'] += file_size
-                    
-                except OSError as e:
-                    print(f"⚠️ 無法讀取檔案 {file_path}: {e}")
-                    continue
-            
-            output_info['directories'] = list(dirs_dict.values())
-        
-        print(f"🎯 API回應：找到 {output_info['total_files']} 個檔案")
-        
-        return JsonResponse(output_info)
-        
-    except Exception as e:
-        print(f"❌ 取得輸出資訊時發生錯誤：{e}")
-        import traceback
-        print(traceback.format_exc())
-        
-        return JsonResponse({
-            'error': str(e),
-            'has_outputs': False,
-            'debug_info': {
-                'project_id': str(project.id),
-                'project_name': project.name,
-                'error_details': str(e)
-            }
-        })
-# 同時修改 get_analysis_outputs_info 函數，增加更詳細的偵錯資訊
-
-@login_required 
-def get_analysis_outputs_info(request, pk):
-    """取得分析輸出資訊的API端點 - 增強版本"""
-    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
-    
-    try:
-        print(f"🔍 開始查找專案輸出檔案：{project.name} (ID: {project.id})")
+        print(f"🔍 查找專案輸出：{project.name} (ID: {str(project.id)[:8]})")
         
         output_dirs = _find_project_output_directories(project)
         
@@ -1613,78 +1568,72 @@ def get_analysis_outputs_info(request, pk):
             'total_files': 0,
             'total_size': 0,
             'debug_info': {
-                'project_id': str(project.id),
+                'project_id': str(project.id)[:8] + "...",
                 'project_name': project.name,
-                'searched_dirs': len(output_dirs),
-                'analysis_output_root': getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 'Not set')
+                'found_dirs': len(output_dirs),
             }
         }
         
         for output_dir in output_dirs:
             if os.path.exists(output_dir):
-                print(f"📁 處理目錄：{output_dir}")
-                
                 dir_info = {
                     'path': output_dir,
                     'name': os.path.basename(output_dir),
+                    'relative_path': os.path.basename(output_dir),  # 用於下載
                     'files': [],
                     'file_count': 0,
                     'size': 0
                 }
                 
-                # 列出目錄中的檔案
-                for root, dirs, files in os.walk(output_dir):
-                    for file in files:
-                        file_path = os.path.join(root, file)
-                        relative_path = os.path.relpath(file_path, output_dir)
-                        
-                        try:
-                            file_size = os.path.getsize(file_path)
-                            file_modified = os.path.getmtime(file_path)
+                # 列出目錄中的所有檔案
+                try:
+                    for root, dirs, files in os.walk(output_dir):
+                        for file in files:
+                            file_path = os.path.join(root, file)
+                            relative_path = os.path.relpath(file_path, output_dir)
                             
-                            dir_info['files'].append({
-                                'name': file,
-                                'path': relative_path,
-                                'size': file_size,
-                                'modified': datetime.fromtimestamp(file_modified).strftime('%Y-%m-%d %H:%M:%S')
-                            })
-                            
-                            dir_info['size'] += file_size
-                            dir_info['file_count'] += 1
-                            print(f"📄 找到檔案：{file} ({file_size} bytes)")
-                            
-                        except OSError as e:
-                            print(f"⚠️ 無法讀取檔案 {file}: {e}")
-                            continue
+                            try:
+                                file_size = os.path.getsize(file_path)
+                                file_modified = os.path.getmtime(file_path)
+                                
+                                dir_info['files'].append({
+                                    'name': file,
+                                    'path': relative_path,
+                                    'size': file_size,
+                                    'modified': datetime.fromtimestamp(file_modified).strftime('%Y-%m-%d %H:%M:%S')
+                                })
+                                
+                                dir_info['size'] += file_size
+                                dir_info['file_count'] += 1
+                                
+                            except OSError:
+                                continue
+                
+                except Exception as e:
+                    print(f"❌ 處理目錄 {output_dir} 時發生錯誤：{e}")
+                    continue
                 
                 if dir_info['file_count'] > 0:
                     output_info['directories'].append(dir_info)
                     output_info['total_files'] += dir_info['file_count']
                     output_info['total_size'] += dir_info['size']
-                    print(f"✅ 目錄 {output_dir} 包含 {dir_info['file_count']} 個檔案")
-                else:
-                    print(f"⚠️ 目錄 {output_dir} 沒有檔案")
+                    print(f"✅ 目錄 {dir_info['name']} 包含 {dir_info['file_count']} 個檔案")
         
-        print(f"🎯 總結果：{output_info['total_files']} 個檔案，總大小 {output_info['total_size']} bytes")
+        print(f"🎯 總計：{output_info['total_files']} 個檔案")
         
         return JsonResponse(output_info)
         
     except Exception as e:
-        print(f"❌ 取得輸出資訊時發生錯誤：{e}")
-        import traceback
-        print(traceback.format_exc())
-        
+        print(f"❌ 錯誤：{e}")
         return JsonResponse({
             'error': str(e),
             'has_outputs': False,
             'debug_info': {
-                'project_id': str(project.id),
+                'project_id': str(project.id)[:8] + "...",
                 'project_name': project.name,
-                'error_details': traceback.format_exc()
+                'error_details': str(e)
             }
         })
-
-# 也修改 download_analysis_outputs 函數，增加更好的錯誤處理
 
 @login_required
 def download_analysis_outputs(request, pk):
@@ -1787,3 +1736,328 @@ def _format_file_size(size_bytes):
         i += 1
     
     return f"{size_bytes:.1f} {size_names[i]}"
+
+
+@login_required
+def download_borehole_report(request, pk, borehole_id):
+    """下載單個鑽孔的完整報表資料夾"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    borehole = get_object_or_404(BoreholeData, project=project, borehole_id=borehole_id)
+    
+    try:
+        import tempfile
+        import zipfile
+        from datetime import datetime
+        from django.http import FileResponse
+        
+        print(f"🔍 開始生成鑽孔 {borehole_id} 的報表...")
+        
+        # 獲取該鑽孔的分析結果數據
+        soil_layers = SoilLayer.objects.filter(borehole=borehole).prefetch_related('analysis_result')
+        
+        if not soil_layers.exists():
+            messages.error(request, f'鑽孔 {borehole_id} 沒有土層數據')
+            return redirect('liquefaction:borehole_detail', pk=project.pk, borehole_id=borehole_id)
+        
+        # 檢查是否有分析結果
+        analysis_results = AnalysisResult.objects.filter(soil_layer__borehole=borehole)
+        if not analysis_results.exists():
+            messages.error(request, f'鑽孔 {borehole_id} 沒有分析結果，請先進行液化分析')
+            return redirect('liquefaction:borehole_detail', pk=project.pk, borehole_id=borehole_id)
+        
+        # 轉換數據為DataFrame格式（類似HBF輸出格式）
+        borehole_data = _convert_borehole_to_dataframe(borehole, soil_layers, analysis_results)
+        
+        # 創建臨時目錄
+        with tempfile.TemporaryDirectory() as temp_dir:
+            borehole_dir = os.path.join(temp_dir, f"鑽孔_{borehole_id}")
+            os.makedirs(borehole_dir)
+            
+            # 生成報表檔案
+            report_files = _generate_borehole_reports(borehole_data, borehole_id, borehole_dir)
+            
+            if not report_files:
+                messages.error(request, f'生成鑽孔 {borehole_id} 報表時發生錯誤')
+                return redirect('liquefaction:borehole_detail', pk=project.pk, borehole_id=borehole_id)
+            
+            # 創建ZIP檔案
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            zip_filename = f"鑽孔_{borehole_id}_報表_{timestamp}.zip"
+            
+            # 創建臨時ZIP檔案
+            with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_zip:
+                temp_zip_path = temp_zip.name
+            
+            with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+                # 遍歷鑽孔目錄中的所有檔案
+                for root, dirs, files in os.walk(borehole_dir):
+                    for file in files:
+                        file_path = os.path.join(root, file)
+                        arcname = os.path.relpath(file_path, temp_dir)
+                        zipf.write(file_path, arcname)
+                        print(f"📄 添加檔案：{arcname}")
+            
+            print(f"✅ 報表ZIP檔案創建完成：{zip_filename}")
+            
+            # 返回檔案響應
+            response = FileResponse(
+                open(temp_zip_path, 'rb'),
+                as_attachment=True,
+                filename=zip_filename
+            )
+            response['Content-Type'] = 'application/zip'
+            
+            # 註冊清理函數（當響應完成後刪除臨時檔案）
+            # 注意：這裡需要小心處理臨時檔案清理
+            
+            return response
+            
+    except Exception as e:
+        print(f"❌ 下載鑽孔報表時發生錯誤：{e}")
+        import traceback
+        print(traceback.format_exc())
+        
+        messages.error(request, f'下載鑽孔 {borehole_id} 報表時發生錯誤：{str(e)}')
+        return redirect('liquefaction:borehole_detail', pk=project.pk, borehole_id=borehole_id)
+
+
+def _convert_borehole_to_dataframe(borehole, soil_layers, analysis_results):
+    """將數據庫中的鑽孔數據轉換為DataFrame格式"""
+    data = []
+    
+    # 按分析方法分組
+    results_by_method = {}
+    for result in analysis_results:
+        method = result.analysis_method
+        if method not in results_by_method:
+            results_by_method[method] = {}
+        results_by_method[method][result.soil_layer.id] = result
+    
+    for layer in soil_layers:
+        # 基本土層信息
+        base_row = {
+            '鑽孔編號': borehole.borehole_id,
+            'TWD97_X': borehole.twd97_x,
+            'TWD97_Y': borehole.twd97_y,
+            '上限深度(公尺)': layer.top_depth,
+            '下限深度(公尺)': layer.bottom_depth,
+            '統一土壤分類': layer.uscs or '',
+            'N': layer.spt_n,
+            '塑性指數(%)': layer.plastic_index,
+            '細料(%)': layer.fines_content,
+            '統體單位重(t/m3)': layer.unit_weight,
+            'water_depth(m)': borehole.water_depth,
+            '鑽孔地表高程': borehole.surface_elevation,
+        }
+        
+        # 為每個分析方法創建一行數據
+        for method, results in results_by_method.items():
+            if layer.id in results:
+                result = results[layer.id]
+                row = base_row.copy()
+                row.update({
+                    '分析方法': method,
+                    '土層深度': result.analysis_depth,
+                    '累計sigmav': result.sigma_v,
+                    'sigma_v_CSR': result.sigma_v_csr,
+                    'N1_60cs': result.n1_60cs,
+                    'CRR_7_5': result.crr_7_5,
+                    'FS_Design': result.fs_design,
+                    'FS_MidEq': result.fs_mid,
+                    'FS_MaxEq': result.fs_max,
+                    'LPI_Design': result.lpi_design,
+                    'LPI_MidEq': result.lpi_mid,
+                    'LPI_MaxEq': result.lpi_max,
+                    'Vs': result.vs,
+                    # 添加更多需要的欄位...
+                })
+                data.append(row)
+    
+    return pd.DataFrame(data)
+
+
+def _generate_borehole_reports(borehole_data, borehole_id, output_dir):
+    """生成單個鑽孔的所有報表檔案"""
+    generated_files = []
+    
+    try:
+        # 1. 生成CSV原始數據
+        csv_filename = f"{borehole_id}_原始資料.csv"
+        csv_path = os.path.join(output_dir, csv_filename)
+        borehole_data.to_csv(csv_path, index=False, encoding='utf-8-sig')
+        generated_files.append(csv_path)
+        print(f"✅ 已生成CSV：{csv_filename}")
+        
+        # 2. 生成Excel報表（如果report模組可用）
+        try:
+            from liquefaction.services.report import create_liquefaction_excel_from_dataframe
+            excel_filename = f"{borehole_id}_液化分析報表.xlsx"
+            excel_path = os.path.join(output_dir, excel_filename)
+            
+            # 只使用第一個分析方法的數據來生成Excel（避免重複）
+            first_method_data = borehole_data[borehole_data['分析方法'] == borehole_data['分析方法'].iloc[0]]
+            create_liquefaction_excel_from_dataframe(first_method_data, excel_path)
+            generated_files.append(excel_path)
+            print(f"✅ 已生成Excel：{excel_filename}")
+            
+        except Exception as e:
+            print(f"⚠️ Excel報表生成失敗：{e}")
+        
+        # 3. 生成圖表（如果report模組可用）
+        try:
+            from liquefaction.services.report import LiquefactionChartGenerator
+            
+            chart_generator = LiquefactionChartGenerator(
+                n_chart_size=(10, 8),
+                fs_chart_size=(12, 8),
+                soil_chart_size=(4, 10)
+            )
+            
+            # 使用第一個分析方法的數據來生成圖表
+            first_method_data = borehole_data[borehole_data['分析方法'] == borehole_data['分析方法'].iloc[0]]
+            
+            # N值圖表
+            try:
+                chart1 = chart_generator.generate_depth_n_chart(first_method_data, borehole_id, output_dir)
+                if chart1:
+                    generated_files.append(chart1)
+                    print(f"✅ 已生成N值圖表")
+            except Exception as e:
+                print(f"⚠️ N值圖表生成失敗：{e}")
+            
+            # FS圖表
+            try:
+                chart2 = chart_generator.generate_depth_fs_chart(first_method_data, borehole_id, output_dir)
+                if chart2:
+                    generated_files.append(chart2)
+                    print(f"✅ 已生成FS圖表")
+            except Exception as e:
+                print(f"⚠️ FS圖表生成失敗：{e}")
+            
+            # 土壤柱狀圖
+            try:
+                chart3 = chart_generator.generate_soil_column_chart(first_method_data, borehole_id, output_dir)
+                if chart3:
+                    generated_files.append(chart3)
+                    print(f"✅ 已生成土壤柱狀圖")
+            except Exception as e:
+                print(f"⚠️ 土壤柱狀圖生成失敗：{e}")
+                
+        except Exception as e:
+            print(f"⚠️ 圖表生成模組載入失敗：{e}")
+        
+        # 4. 生成摘要文件
+        try:
+            summary_filename = f"{borehole_id}_液化分析摘要.txt"
+            summary_path = os.path.join(output_dir, summary_filename)
+            
+            with open(summary_path, 'w', encoding='utf-8') as f:
+                f.write(f"鑽孔 {borehole_id} 液化分析摘要\n")
+                f.write("="*50 + "\n\n")
+                
+                # 基本資訊
+                first_row = borehole_data.iloc[0]
+                f.write(f"座標 (TWD97): ({first_row.get('TWD97_X', '')}, {first_row.get('TWD97_Y', '')})\n")
+                f.write(f"分析方法: {', '.join(borehole_data['分析方法'].unique())}\n")
+                f.write(f"分析層數: {len(borehole_data['鑽孔編號'].unique()) if '鑽孔編號' in borehole_data.columns else len(borehole_data) // len(borehole_data['分析方法'].unique())}\n\n")
+                
+                # 各情境LPI總計（以第一個分析方法為例）
+                first_method_data = borehole_data[borehole_data['分析方法'] == borehole_data['分析方法'].iloc[0]]
+                for scenario in ['Design', 'MidEq', 'MaxEq']:
+                    lpi_col = f'LPI_{scenario}'
+                    if lpi_col in first_method_data.columns:
+                        total_lpi = sum(float(x) for x in first_method_data[lpi_col] if x != '-' and pd.notna(x))
+                        f.write(f"{scenario} 情境總LPI: {total_lpi:.3f}\n")
+            
+            generated_files.append(summary_path)
+            print(f"✅ 已生成摘要：{summary_filename}")
+            
+        except Exception as e:
+            print(f"⚠️ 摘要檔案生成失敗：{e}")
+        
+        return generated_files
+        
+    except Exception as e:
+        print(f"❌ 生成鑽孔報表時發生錯誤：{e}")
+        return []
+    
+
+
+@login_required
+def download_single_directory(request, pk, dir_name):
+    """下載單一資料夾 - 簡化版本"""
+    project = get_object_or_404(AnalysisProject, pk=pk, user=request.user)
+    
+    try:
+        import tempfile
+        import zipfile
+        import urllib.parse
+        from datetime import datetime
+        from django.http import FileResponse
+        from django.conf import settings
+        
+        # 解碼目錄名稱
+        decoded_dir_name = urllib.parse.unquote(dir_name)
+        print(f"🔍 請求下載目錄：{decoded_dir_name}")
+        
+        # 建構完整路徑
+        analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
+                                      os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
+        target_dir = os.path.join(analysis_output_root, decoded_dir_name)
+        
+        if not os.path.exists(target_dir):
+            messages.error(request, f'找不到資料夾：{decoded_dir_name}')
+            return redirect('liquefaction:results', pk=project.pk)
+        
+        # 基本安全檢查：確保目錄包含專案ID
+        project_id_short = str(project.id)[:8]
+        if project_id_short not in decoded_dir_name:
+            messages.error(request, '該資料夾不屬於當前專案')
+            return redirect('liquefaction:results', pk=project.pk)
+        
+        print(f"📁 準備打包：{target_dir}")
+        
+        # 創建ZIP檔案
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.zip') as temp_zip:
+            temp_zip_path = temp_zip.name
+        
+        total_files = 0
+        
+        with zipfile.ZipFile(temp_zip_path, 'w', zipfile.ZIP_DEFLATED) as zipf:
+            for root, dirs, files in os.walk(target_dir):
+                for file in files:
+                    file_path = os.path.join(root, file)
+                    
+                    # 在ZIP中的路徑
+                    if root == target_dir:
+                        arcname = os.path.join(decoded_dir_name, file)
+                    else:
+                        rel_path = os.path.relpath(file_path, target_dir)
+                        arcname = os.path.join(decoded_dir_name, rel_path)
+                    
+                    zipf.write(file_path, arcname)
+                    total_files += 1
+        
+        if total_files == 0:
+            messages.warning(request, f'資料夾 {decoded_dir_name} 中沒有檔案')
+            os.unlink(temp_zip_path)
+            return redirect('liquefaction:results', pk=project.pk)
+        
+        # 生成下載檔名
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        download_filename = f"{project.name}_{decoded_dir_name}_{timestamp}.zip"
+        
+        response = FileResponse(
+            open(temp_zip_path, 'rb'),
+            as_attachment=True,
+            filename=download_filename
+        )
+        response['Content-Type'] = 'application/zip'
+        
+        print(f"🎯 開始下載：{download_filename} ({total_files} 個檔案)")
+        return response
+        
+    except Exception as e:
+        print(f"❌ 下載錯誤：{e}")
+        messages.error(request, f'下載資料夾時發生錯誤：{str(e)}')
+        return redirect('liquefaction:results', pk=project.pk)

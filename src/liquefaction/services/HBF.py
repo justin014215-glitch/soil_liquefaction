@@ -2204,7 +2204,7 @@ class HBF:
             first_row = hole_data.iloc[0]
             x = first_row.get('TWD97_X', '')
             y = first_row.get('TWD97_Y', '')
-            z = first_row.get('鑽孔地表高程', '')
+            z = first_row.get('地表高程', '')
             
             # 計算各情境的LPI總和（使用過濾後的資料）
             lpi_sums = {}
@@ -2701,7 +2701,7 @@ class HBF:
             project_prefix = f"{project_id}_" if project_id else ""
             
             if output_file_path is None:
-                output_filename = os.path.join(output_dir, f"{project_prefix}NCEER液化分析結果_{current_time}.csv")
+                output_filename = os.path.join(output_dir, f"{project_prefix}HBF液化分析結果_{current_time}.csv")
             else:
                 output_filename = output_file_path
 

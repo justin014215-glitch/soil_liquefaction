@@ -86,19 +86,58 @@ function getColumnHeaders(method) {
                     </ol>
                 </nav>
             </div>
-            <!-- 修改：改用下拉式選單提供多種下載選項 -->
+            <!-- 新的下載選項 - 替換原有的下載按鈕組 -->
             <div class="btn-group" role="group">
                 <div class="dropdown">
                     <button class="btn btn-success dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
                         <i class="fas fa-download"></i> 下載選項
                     </button>
                     <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
-                        <li><h6 class="dropdown-header">分析結果</h6></li>
+                        <li><h6 class="dropdown-header"><i class="fas fa-table"></i> 分析結果</h6></li>
                         <li>
                             <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=csv">
-                                <i class="fas fa-file-csv"></i> 下載CSV格式
+                                <i class="fas fa-file-csv text-success"></i> CSV格式結果
+                                <small class="text-muted d-block">包含所有分析數據的表格</small>
                             </a>
                         </li>
+                        <li>
+                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package">
+                                <i class="fas fa-archive text-primary"></i> 完整分析包
+                                <small class="text-muted d-block">包含結果與分析報告</small>
+                            </a>
+                        </li>
+                        {% if method_filter %}
+                        <li>
+                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package&method={{ method_filter }}">
+                                <i class="fas fa-archive text-info"></i> {{ method_filter }}分析包
+                                <small class="text-muted d-block">僅{{ method_filter }}方法的結果</small>
+                            </a>
+                        </li>
+                        {% endif %}
+                        <li><hr class="dropdown-divider"></li>
+                        <li><h6 class="dropdown-header"><i class="fas fa-folder"></i> 分析輸出檔案</h6></li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="checkAndDownloadOutputs(); return false;">
+                                <i class="fas fa-download text-warning"></i> 快速下載全部
+                                <small class="text-muted d-block">下載所有分析輸出檔案</small>
+                                <span id="outputs-status" class="badge bg-secondary ms-1">檢查中...</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a class="dropdown-item" href="#" onclick="showOutputsInfo(); return false;">
+                                <i class="fas fa-list text-info"></i> 選擇性下載
+                                <small class="text-muted d-block">查看並選擇要下載的資料夾</small>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+                <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
+                    <i class="fas fa-redo"></i> 重新分析
+                </a>
+                <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> 返回專案
+                </a>
+            </div>
                         <li>
                             <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package">
                                 <i class="fas fa-archive"></i> 下載完整分析包
@@ -427,11 +466,14 @@ function getColumnHeaders(method) {
 
 
 <!-- 新增：輸出檔案資訊 Modal -->
+<!-- 替換原有的輸出檔案資訊 Modal -->
 <div class="modal fade" id="outputsInfoModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
         <div class="modal-content">
             <div class="modal-header">
-                <h5 class="modal-title"><i class="fas fa-folder-open"></i> 分析輸出檔案清單</h5>
+                <h5 class="modal-title">
+                    <i class="fas fa-folder-open"></i> 分析輸出檔案管理
+                </h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -443,15 +485,52 @@ function getColumnHeaders(method) {
                 </div>
             </div>
             <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">關閉</button>
-                <button type="button" class="btn btn-success" onclick="downloadOutputsFromModal()">
-                    <i class="fas fa-download"></i> 下載全部
-                </button>
+                <div class="d-flex justify-content-between w-100">
+                    <div>
+                        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+                            <i class="fas fa-times"></i> 關閉
+                        </button>
+                    </div>
+                    <div>
+                        <button type="button" class="btn btn-info me-2" onclick="showOutputsInfo()" title="重新載入檔案列表">
+                            <i class="fas fa-sync-alt"></i> 重新載入
+                        </button>
+                        <button type="button" class="btn btn-success" onclick="downloadOutputsFromModal()" title="下載所有檔案">
+                            <i class="fas fa-download"></i> 下載全部
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
+<!-- 新增：下載確認 Modal -->
+<div class="modal fade" id="downloadConfirmModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="fas fa-download"></i> 確認下載
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div id="download-confirm-content">
+                    <!-- 動態內容 -->
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">
+                    <i class="fas fa-times"></i> 取消
+                </button>
+                <button type="button" class="btn btn-success" id="confirm-download-btn">
+                    <i class="fas fa-download"></i> 確認下載
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 <!-- 新增：方法比較 Modal -->
 <div class="modal fade" id="methodComparisonModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
@@ -507,8 +586,20 @@ function checkAndDownloadOutputs() {
         .then(response => response.json())
         .then(data => {
             if (data.has_outputs) {
-                // 有檔案，直接下載
-                window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+                // 有檔案，確認是否要下載全部
+                if (data.directories && data.directories.length > 1) {
+                    const confirmed = confirm(
+                        `找到 ${data.directories.length} 個資料夾，總共 ${data.total_files} 個檔案 (${formatFileSize(data.total_size)})。\n\n` +
+                        `確定要下載全部嗎？\n\n` +
+                        `提示：您也可以點擊"選擇性下載"來選擇特定資料夾。`
+                    );
+                    if (confirmed) {
+                        window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+                    }
+                } else {
+                    // 只有一個資料夾，直接下載
+                    window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+                }
             } else {
                 // 沒有檔案，顯示提示
                 alert('沒有找到分析輸出檔案。\n\n可能原因：\n1. 分析尚未完成\n2. 分析過程中沒有生成額外的輸出檔案\n3. 輸出檔案已被清理');
@@ -540,23 +631,32 @@ function showOutputsInfo() {
                 let html = `
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i>
-                        找到 ${data.total_files} 個檔案，總大小：${formatFileSize(data.total_size)}
+                        找到 <strong>${data.total_files}</strong> 個檔案，總大小：<strong>${formatFileSize(data.total_size)}</strong>
+                        <div class="mt-2">
+                            <small class="text-muted">您可以下載全部檔案，或選擇特定資料夾進行下載。</small>
+                        </div>
                     </div>
                 `;
                 
                 data.directories.forEach(dir => {
                     html += `
                         <div class="card mb-3">
-                            <div class="card-header">
-                                <h6 class="card-title mb-0">
-                                    <i class="fas fa-folder"></i> ${dir.name}
-                                    <span class="badge bg-secondary ms-2">${dir.file_count} 個檔案</span>
-                                </h6>
+                            <div class="card-header d-flex justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="card-title mb-0">
+                                        <i class="fas fa-folder"></i> ${dir.name}
+                                        <span class="badge bg-secondary ms-2">${dir.file_count} 個檔案</span>
+                                        <span class="badge bg-info ms-1">${formatFileSize(dir.size)}</span>
+                                    </h6>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-success" onclick="downloadSingleDirectory('${encodeURIComponent(dir.relative_path || dir.name)}')" title="下載此資料夾">
+                                    <i class="fas fa-download"></i> 下載資料夾
+                                </button>
                             </div>
                             <div class="card-body">
-                                <div class="table-responsive">
+                                <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
                                     <table class="table table-sm">
-                                        <thead>
+                                        <thead class="table-light">
                                             <tr>
                                                 <th>檔案名稱</th>
                                                 <th>路徑</th>
@@ -572,8 +672,8 @@ function showOutputsInfo() {
                             <tr>
                                 <td><i class="fas fa-file"></i> ${file.name}</td>
                                 <td><small class="text-muted">${file.path}</small></td>
-                                <td>${formatFileSize(file.size)}</td>
-                                <td>${file.modified}</td>
+                                <td><small>${formatFileSize(file.size)}</small></td>
+                                <td><small>${file.modified}</small></td>
                             </tr>
                         `;
                     });
@@ -592,7 +692,7 @@ function showOutputsInfo() {
                 content.innerHTML = `
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i>
-                        沒有找到分析輸出檔案
+                        <strong>沒有找到分析輸出檔案</strong>
                     </div>
                     <p class="text-muted">可能原因：</p>
                     <ul class="text-muted">
@@ -600,6 +700,11 @@ function showOutputsInfo() {
                         <li>分析過程中沒有生成額外的輸出檔案</li>
                         <li>輸出檔案已被清理</li>
                     </ul>
+                    <div class="text-center mt-3">
+                        <button type="button" class="btn btn-primary" onclick="window.location.href='{% url "liquefaction:project_detail" project.pk %}'">
+                            <i class="fas fa-arrow-left"></i> 返回專案
+                        </button>
+                    </div>
                 `;
             }
         })
@@ -608,14 +713,96 @@ function showOutputsInfo() {
             content.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-circle"></i>
-                    載入檔案資訊時發生錯誤：${error.message}
+                    <strong>載入檔案資訊時發生錯誤</strong>
+                    <br><small>${error.message}</small>
+                </div>
+                <div class="text-center mt-3">
+                    <button type="button" class="btn btn-secondary" onclick="showOutputsInfo()">
+                        <i class="fas fa-redo"></i> 重新載入
+                    </button>
                 </div>
             `;
         });
 }
 
+function downloadSingleDirectory(dirName) {
+    const decodedDirName = decodeURIComponent(dirName);
+    
+    if (confirm(`確定要下載資料夾 "${decodedDirName}" 嗎？`)) {
+        // 顯示載入狀態
+        const loadingHtml = `
+            <div class="alert alert-info">
+                <div class="d-flex align-items-center">
+                    <div class="loading me-3"></div>
+                    <div>
+                        <strong>準備下載中...</strong><br>
+                        <small>正在打包資料夾 "${decodedDirName}"，請稍候</small>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // 更新modal內容顯示載入狀態
+        const content = document.getElementById('outputs-info-content');
+        const originalContent = content.innerHTML;
+        content.innerHTML = loadingHtml;
+        
+        // 執行下載
+        const downloadUrl = `{% url "liquefaction:download_single_dir" project.pk "PLACEHOLDER" %}`.replace('PLACEHOLDER', encodeURIComponent(dirName));
+        
+        // 創建隱藏的iframe來觸發下載
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = downloadUrl;
+        document.body.appendChild(iframe);
+        
+        // 3秒後移除iframe並恢復原內容
+        setTimeout(() => {
+            document.body.removeChild(iframe);
+            content.innerHTML = originalContent;
+            
+            // 顯示成功訊息
+            const successAlert = document.createElement('div');
+            successAlert.className = 'alert alert-success alert-dismissible fade show';
+            successAlert.innerHTML = `
+                <i class="fas fa-check-circle"></i>
+                <strong>下載開始！</strong> 資料夾 "${decodedDirName}" 的下載應該已經開始。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            content.insertBefore(successAlert, content.firstChild);
+        }, 3000);
+    }
+}
+
 function downloadOutputsFromModal() {
-    window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+    const modal = bootstrap.Modal.getInstance(document.getElementById('outputsInfoModal'));
+    
+    if (confirm('確定要下載所有分析輸出檔案嗎？')) {
+        // 關閉modal
+        if (modal) {
+            modal.hide();
+        }
+        
+        // 執行下載
+        window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
+        
+        // 顯示成功訊息
+        setTimeout(() => {
+            const alertDiv = document.createElement('div');
+            alertDiv.className = 'alert alert-success alert-dismissible fade show';
+            alertDiv.innerHTML = `
+                <i class="fas fa-download"></i>
+                <strong>下載開始！</strong> 所有分析輸出檔案的下載應該已經開始。
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            
+            // 插入到頁面頂部
+            const container = document.querySelector('.container');
+            if (container && container.firstChild) {
+                container.insertBefore(alertDiv, container.firstChild);
+            }
+        }, 500);
+    }
 }
 
 function formatFileSize(bytes) {

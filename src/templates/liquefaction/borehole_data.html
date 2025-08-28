@@ -197,6 +197,12 @@
                                        class="btn btn-sm btn-outline-primary">
                                         <i class="fas fa-eye"></i> 詳細
                                     </a>
+                                    {% if stat.has_analysis %}
+                                    <a href="{% url 'liquefaction:download_borehole_report' project.pk stat.borehole.borehole_id %}" 
+                                    class="btn btn-sm btn-success">
+                                        <i class="fas fa-download"></i> 下載
+                                    </a>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% endfor %}

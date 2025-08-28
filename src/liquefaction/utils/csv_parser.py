@@ -401,7 +401,28 @@ class CSVParser:
                     value = row[self.column_mapping[field]]
                     if pd.notna(value) and str(value).strip() and str(value).strip() != '-':
                         soil_layer[field] = str(value).strip()
-            
+            # ===== 新增：特別處理塑性指數 NP 情況 =====
+            if 'plastic_index' in self.column_mapping:
+                pi_value = row[self.column_mapping['plastic_index']]
+                if pd.notna(pi_value) and str(pi_value).strip() and str(pi_value).strip() != '-':
+                    value_str = str(pi_value).strip().upper()
+                    
+                    if value_str == 'NP':
+                        # NP（非塑性）設為 0，保留原始值資訊
+                        soil_layer['plastic_index'] = 0
+                        soil_layer['plastic_index_original'] = 'NP'
+                        # 不產生警告訊息 - NP 是正常情況
+                    else:
+                        try:
+                            # 嘗試轉換為數值
+                            numeric_pi = float(value_str)
+                            soil_layer['plastic_index'] = numeric_pi
+                            soil_layer['plastic_index_original'] = value_str
+                        except (ValueError, TypeError):
+                            # 只在真正無法轉換時才警告
+                            self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數數值格式錯誤 ({pi_value})")
+                            soil_layer['plastic_index_original'] = value_str
+            # ===== 塑性指數處理結束 =====
             # SPT N值處理
             if 'spt_n' in self.column_mapping:
                 value = row[self.column_mapping['spt_n']]
@@ -441,23 +462,7 @@ class CSVParser:
                                         self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數數值格式錯誤 ({value})")
                                         soil_layer[field] = 0
                                         soil_layer['plastic_index_original'] = value_str
-                                # ===== 塑性指數處理結束 =====# ===== 新增：特別處理塑性指數 NP 情況 =====
-                                if field == 'plastic_index':
-                                    value_str = str(value).strip().upper()
-                                    if value_str == 'NP':
-                                        # NP（非塑性）設為 0，但保留原始值資訊
-                                        soil_layer[field] = 0
-                                        soil_layer['plastic_index_original'] = 'NP'  # 保留原始值
-                                        self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數為 NP（非塑性），已轉換為 0")
-                                    else:
-                                        try:
-                                            soil_layer[field] = float(value_str)
-                                            soil_layer['plastic_index_original'] = value_str  # 保留原始值
-                                        except (ValueError, TypeError):
-                                            self.warnings.append(f"鑽孔 {borehole_id}: 塑性指數數值格式錯誤 ({value})")
-                                            soil_layer[field] = 0
-                                            soil_layer['plastic_index_original'] = value_str
-                                # ===== 塑性指數處理結束 =====
+            
                                      # ===== 新增：如果沒有細料含量但有粉土和黏土含量，自動計算 =====
                                 # 在方法最後，返回之前添加
                                 if 'fines_content' not in soil_layer or not soil_layer.get('fines_content'):
@@ -475,7 +480,8 @@ class CSVParser:
             # 數值型欄位處理
             numeric_fields = [
                 'unit_weight', 'bulk_density', 'dry_unit_weight', 'void_ratio',
-                'water_content', 'water_content_rock', 'liquid_limit', 'plastic_index', 
+                'water_content', 'water_content_rock', #'liquid_limit',
+                #'plastic_index', 
                 'plastic_limit', 'shrinkage_index', 'specific_gravity', 'specific_gravity_rock',
                 'gravel_percent', 'sand_percent', 'silt_percent', 'clay_percent', 'fines_content',
                 'd10', 'd30', 'd50', 'd60', 'core_length', 'core_diameter', 'ucs'
@@ -492,7 +498,19 @@ class CSVParser:
                             # 收集統體單位重數值用於單位判斷
                             if field == 'unit_weight':
                                 self.unit_weight_values.append(numeric_value)
-                                
+                                              # ===== 新增：檢測 kN/m³ 單位 =====
+                            # 通常 kN/m³ 的單位重數值範圍在 15-25 之間
+                            # 而 kgf/m³ 或 t/m³ 會在 1.5-2.5 之間
+                            if 15 <= numeric_value <= 30:
+                                    # 使用 set 來避免同一鑽孔重複警告
+                                    if not hasattr(self, '_kn_unit_warned_boreholes'):
+                                        self._kn_unit_warned_boreholes = set()
+                                    
+                                    if borehole_id  in self._kn_unit_warned_boreholes:
+                                        self._kn_unit_warned_boreholes.add(borehole_id)
+                                        self.warnings.append(f"偵測到{borehole_id}使用kN/m³，請確認統體單位重之單位後重新上傳檔案")
+
+                            # ===== kN/m³ 檢測結束 =====    
                         except (ValueError, TypeError):
                             self.warnings.append(f"鑽孔 {borehole_id}: {field} 數值格式錯誤 ({value})")
             

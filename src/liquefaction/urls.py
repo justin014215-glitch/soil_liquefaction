@@ -36,4 +36,11 @@ urlpatterns = [
     # 鑽孔資料
     path('projects/<uuid:pk>/borehole-data/', views.borehole_data, name='borehole_data'),
     path('projects/<uuid:pk>/borehole/<str:borehole_id>/', views.borehole_detail, name='borehole_detail'),
+
+    # 新增：單獨資料夾下載
+    path('projects/<uuid:pk>/download-dir/<str:dir_name>/', views.download_single_directory, name='download_single_dir'),
+  
+    # 新增：下載鑽孔報表
+    path('projects/<uuid:pk>/borehole/<str:borehole_id>/download-report/', 
+    views.download_borehole_report, name='download_borehole_report'),
 ]

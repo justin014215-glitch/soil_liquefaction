@@ -6,6 +6,9 @@ import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 import numpy as np
 import os
+import matplotlib
+matplotlib.use('Agg')  # 使用非互動式後端
+import matplotlib.pyplot as plt
 
 class LiquefactionExcelReport:
     def __init__(self):

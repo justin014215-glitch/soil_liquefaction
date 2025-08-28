@@ -131,7 +131,7 @@ class AnalysisProject(models.Model):
         """獲取專案輸出目錄"""
         from django.conf import settings
         safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        dir_name = f"{self.id}_{safe_name}_{self.analysis_method or 'HBF'}"
+        dir_name = f"{safe_name}_{self.analysis_method or 'HBF'}"
         
         analysis_output_root = getattr(settings, 'ANALYSIS_OUTPUT_ROOT', 
                                       os.path.join(settings.MEDIA_ROOT, 'analysis_outputs'))
@@ -255,6 +255,15 @@ class SoilLayer(models.Model):
     plastic_index = models.FloatField(null=True, blank=True, verbose_name="塑性指數 (%)")
     specific_gravity = models.FloatField(null=True, blank=True, verbose_name="比重")
     
+    plastic_index = models.FloatField(null=True, blank=True, verbose_name="塑性指數")
+    
+    # 確保有這個欄位 - 如果沒有需要添加
+    plastic_index_original = models.CharField(
+        max_length=10, 
+        null=True, 
+        blank=True, 
+        verbose_name="塑性指數原始值"
+    )
     # 粒徑分析
 
     gravel_percent = models.FloatField(null=True, blank=True, verbose_name="礫石含量 (%)")
@@ -374,7 +383,7 @@ class AnalysisResult(models.Model):
     # JRA 特殊參數
     c1_factor = models.FloatField(null=True, blank=True, verbose_name="C1係數")
     c2_factor = models.FloatField(null=True, blank=True, verbose_name="C2係數")
-    
+
     # 設計地震結果
     mw_design = models.FloatField(null=True, blank=True, verbose_name="設計地震規模")
     a_value_design = models.FloatField(null=True, blank=True, verbose_name="設計地表加速度")
@@ -423,8 +432,9 @@ class AnalysisResult(models.Model):
     def get_output_directory(self):
         """獲取專案輸出目錄"""
         from django.conf import settings
+    
         safe_name = "".join(c for c in self.name if c.isalnum() or c in (' ', '-', '_')).rstrip()
-        dir_name = f"{self.id}_{safe_name}_{self.analysis_method}"
+        dir_name = f"{safe_name}_{self.analysis_method}"
         return os.path.join(settings.ANALYSIS_OUTPUT_ROOT, dir_name)
     
     def list_output_files(self):
