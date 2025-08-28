@@ -312,7 +312,7 @@ class LiquefactionAnalysisEngine:
                     'TWD97_Y': borehole.twd97_y,
                     '上限深度(公尺)': layer.top_depth,
                     '下限深度(公尺)': layer.bottom_depth,
-                    '鑽孔地表高程': layer.ground_elevation,
+                    '鑽孔地表高程': layer.ground_elevation or borehole.surface_elevation,
                     'water_depth(m)': borehole.water_depth,
                     'N_value': layer.spt_n if layer.spt_n is not None else None,
                     '統一土壤分類': layer.uscs,

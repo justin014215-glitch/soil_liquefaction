@@ -2103,8 +2103,20 @@ class AIJ:
             first_row = hole_data.iloc[0]
             x = first_row.get('TWD97_X', '')
             y = first_row.get('TWD97_Y', '')
-            z = first_row.get('鑽孔地表高程', '')
-            
+            z = ''
+            elevation_field_found = None
+            for elevation_field in ['鑽井地表高程', '地表高程', 'surface_elevation', '高程', 'elevation', '地表高程(m)', '鑽孔地表高程']:
+                if elevation_field in first_row and pd.notna(first_row[elevation_field]) and first_row[elevation_field] != '':
+                    z = first_row[elevation_field]
+                    elevation_field_found = elevation_field
+                    break
+            # Debug 輸出
+            if elevation_field_found:
+                if hole_id == final_df['鑽孔編號'].unique()[0]:  # 只對第一個鑽孔輸出一次
+                    print(f"  找到地表高程欄位：{elevation_field_found}")
+            else:
+                print(f"  警告：鑽孔 {hole_id} 找不到地表高程資料，可用欄位：{list(first_row.keys())[:10]}...")
+                z = 0.0  # 設為預設值
             # 計算各情境的LPI總和（使用過濾後的資料）
             lpi_sums = {}
             scenarios = ['Design', 'MidEq', 'MaxEq']
