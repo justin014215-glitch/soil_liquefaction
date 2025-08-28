@@ -1942,7 +1942,7 @@ class HBF:
             '鑽孔編號': 'HOLE ID',
             'TWD97_X': 'X', 
             'TWD97_Y': 'Y',
-            '鑽孔地表高程': 'Z',
+            '鑽井地表高程': 'Z',
             '上限深度(公尺)': 'from',
             '下限深度(公尺)': 'to',
             '統一土壤分類': 'USCS',
@@ -2204,7 +2204,7 @@ class HBF:
             first_row = hole_data.iloc[0]
             x = first_row.get('TWD97_X', '')
             y = first_row.get('TWD97_Y', '')
-            z = first_row.get('地表高程', '')
+            z = first_row.get('鑽井地表高程', '')
             
             # 計算各情境的LPI總和（使用過濾後的資料）
             lpi_sums = {}
