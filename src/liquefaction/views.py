@@ -697,6 +697,30 @@ def results(request, pk):
     if borehole_filter:
         results = results.filter(soil_layer__borehole__borehole_id=borehole_filter)
     
+    # 計算各鑽孔的LPI總和
+    borehole_lpi_stats = {}
+    
+    # 按鑽孔分組計算
+    borehole_groups = {}
+    for result in results:
+        borehole_id = result.soil_layer.borehole.borehole_id
+        if borehole_id not in borehole_groups:
+            borehole_groups[borehole_id] = []
+        borehole_groups[borehole_id].append(result)
+    
+    for borehole_id, borehole_results in borehole_groups.items():
+        lpi_design = sum(r.lpi_design for r in borehole_results if r.lpi_design)
+        lpi_mid = sum(r.lpi_mid for r in borehole_results if r.lpi_mid) 
+        lpi_max = sum(r.lpi_max for r in borehole_results if r.lpi_max)
+        
+        borehole_lpi_stats[borehole_id] = {
+            'design': lpi_design,
+            'mid': lpi_mid, 
+            'max': lpi_max,
+            'design_class': 'low' if lpi_design < 5 else 'medium' if lpi_design <= 15 else 'high',
+            'mid_class': 'low' if lpi_mid < 5 else 'medium' if lpi_mid <= 15 else 'high',
+            'max_class': 'low' if lpi_max < 5 else 'medium' if lpi_max <= 15 else 'high',
+        }
     # 新增：分析方法篩選
     method_filter = request.GET.get('method', '')
     if method_filter:
@@ -719,6 +743,7 @@ def results(request, pk):
         'available_methods': available_methods_display,
         'method_filter': method_filter,
         'lpi_filter': lpi_filter,  
+        'borehole_lpi_stats': borehole_lpi_stats,
     }
     
     return render(request, 'liquefaction/results.html', context)

@@ -1,4 +1,3 @@
-
 {% extends 'base.html' %}
 <!-- 在 results.html 頂部添加 -->
 {% load static %}
@@ -68,10 +67,45 @@ function getColumnHeaders(method) {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
 }
+
+/* LPI統計樣式 */
+.lpi-summary-row {
+    background-color: #f8f9fa;
+    font-weight: bold;
+    border-top: 3px solid #dee2e6;
+}
+
+.lpi-low {
+    background-color: #d4edda;
+    color: #155724;
+    border: 1px solid #c3e6cb;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: bold;
+}
+
+.lpi-medium {
+    background-color: #fff3cd;
+    color: #856404;
+    border: 1px solid #ffeaa7;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: bold;
+}
+
+.lpi-high {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-weight: bold;
+}
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- 1. 修改後的頂部按鈕區域 -->
 <div class="row">
     <div class="col-12">
         <div class="d-flex justify-content-between align-items-center mb-4">
@@ -86,91 +120,63 @@ function getColumnHeaders(method) {
                     </ol>
                 </nav>
             </div>
-            <!-- 新的下載選項 - 替換原有的下載按鈕組 -->
-            <div class="btn-group" role="group">
-                <div class="dropdown">
-                    <button class="btn btn-success dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                        <i class="fas fa-download"></i> 下載選項
-                    </button>
-                    <ul class="dropdown-menu" aria-labelledby="downloadDropdown">
-                        <li><h6 class="dropdown-header"><i class="fas fa-table"></i> 分析結果</h6></li>
-                        <li>
-                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=csv">
-                                <i class="fas fa-file-csv text-success"></i> CSV格式結果
-                                <small class="text-muted d-block">包含所有分析數據的表格</small>
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package">
-                                <i class="fas fa-archive text-primary"></i> 完整分析包
-                                <small class="text-muted d-block">包含結果與分析報告</small>
-                            </a>
-                        </li>
-                        {% if method_filter %}
-                        <li>
-                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package&method={{ method_filter }}">
-                                <i class="fas fa-archive text-info"></i> {{ method_filter }}分析包
-                                <small class="text-muted d-block">僅{{ method_filter }}方法的結果</small>
-                            </a>
-                        </li>
-                        {% endif %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header"><i class="fas fa-folder"></i> 分析輸出檔案</h6></li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="checkAndDownloadOutputs(); return false;">
-                                <i class="fas fa-download text-warning"></i> 快速下載全部
-                                <small class="text-muted d-block">下載所有分析輸出檔案</small>
-                                <span id="outputs-status" class="badge bg-secondary ms-1">檢查中...</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="showOutputsInfo(); return false;">
-                                <i class="fas fa-list text-info"></i> 選擇性下載
-                                <small class="text-muted d-block">查看並選擇要下載的資料夾</small>
-                            </a>
-                        </li>
-                    </ul>
+            <!-- 改進的按鈕區域 -->
+            <div class="btn-toolbar" role="toolbar">
+                <div class="btn-group me-2" role="group">
+                    <div class="dropdown">
+                        <button class="btn btn-success dropdown-toggle" type="button" id="downloadDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                            <i class="fas fa-download"></i> 下載選項
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="downloadDropdown">
+                            <li><h6 class="dropdown-header"><i class="fas fa-table"></i> 分析結果</h6></li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=csv">
+                                    <i class="fas fa-file-csv text-success"></i> CSV格式結果
+                                    <br><small class="text-muted">包含所有分析數據的表格</small>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package">
+                                    <i class="fas fa-archive text-primary"></i> 完整分析包
+                                    <br><small class="text-muted">包含結果與分析報告</small>
+                                </a>
+                            </li>
+                            {% if method_filter %}
+                            <li>
+                                <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package&method={{ method_filter }}">
+                                    <i class="fas fa-archive text-info"></i> {{ method_filter }}分析包
+                                    <br><small class="text-muted">僅{{ method_filter }}方法的結果</small>
+                                </a>
+                            </li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header"><i class="fas fa-folder"></i> 分析輸出檔案</h6></li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="checkAndDownloadOutputs(); return false;">
+                                    <i class="fas fa-download text-warning"></i> 快速下載全部
+                                    <br><small class="text-muted">下載所有分析輸出檔案</small>
+                                    <span id="outputs-status" class="badge bg-secondary ms-1">檢查中...</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a class="dropdown-item" href="#" onclick="showOutputsInfo(); return false;">
+                                    <i class="fas fa-list text-info"></i> 選擇性下載
+                                    <br><small class="text-muted">查看並選擇要下載的資料夾</small>
+                                </a>
+                            </li>
+                        </ul>
+                    </div>
                 </div>
-                <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
-                    <i class="fas fa-redo"></i> 重新分析
-                </a>
-                <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i> 返回專案
-                </a>
-            </div>
-                        <li>
-                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package">
-                                <i class="fas fa-archive"></i> 下載完整分析包
-                            </a>
-                        </li>
-                        {% if method_filter %}
-                        <li>
-                            <a class="dropdown-item" href="{% url 'liquefaction:export' project.pk %}?type=package&method={{ method_filter }}">
-                                <i class="fas fa-archive"></i> 下載{{ method_filter }}分析包
-                            </a>
-                        </li>
-                        {% endif %}
-                        <li><hr class="dropdown-divider"></li>
-                        <li><h6 class="dropdown-header">分析輸出檔案</h6></li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="checkAndDownloadOutputs()">
-                                <i class="fas fa-folder-open"></i> 下載分析輸出資料夾
-                                <span id="outputs-status" class="badge bg-secondary ms-1">檢查中...</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a class="dropdown-item" href="#" onclick="showOutputsInfo()">
-                                <i class="fas fa-info-circle"></i> 查看輸出檔案清單
-                            </a>
-                        </li>
-                    </ul>
+                <div class="btn-group me-2" role="group">
+                    <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
+                        <i class="fas fa-redo"></i> 重新分析
+                    </a>
                 </div>
-                <a href="{% url 'liquefaction:reanalyze' project.pk %}" class="btn btn-warning">
-                    <i class="fas fa-redo"></i> 重新分析
-                </a>
-                <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-outline-secondary">
-                    <i class="fas fa-arrow-left"></i> 返回專案
-                </a>
+                <div class="btn-group" role="group">
+                    <a href="{% url 'liquefaction:project_detail' project.pk %}" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left"></i> 返回專案
+                    </a>
+                </div>
             </div>
         </div>
     </div>
@@ -368,83 +374,151 @@ function getColumnHeaders(method) {
                             </tr>
                         </thead>
                         <tbody>
-                            {% for result in results %}
-                            <tr>
-                                <td><strong>{{ result.soil_layer.borehole.borehole_id }}</strong></td>
-                                {% if not method_filter %}
-                                <td><span class="badge bg-secondary">{{ result.analysis_method }}</span></td>
-                                {% endif %}
-                                <td>{{ result.soil_layer.top_depth|floatformat:1 }}-{{ result.soil_layer.bottom_depth|floatformat:1 }}</td>
-                                <td>{{ result.soil_layer.uscs|default:"-" }}</td>
-                                
-                                <!-- 🔴 修改後的N值顯示邏輯 -->
-                                <td>{{ result.soil_layer.spt_n|floatformat:0|default:"-" }}</td>
-                                
-                                {% if method_filter == 'AIJ' or method_filter == 'JRA' %}
-                                <td>{{ result.n60|floatformat:1|default:"-" }}</td>  <!-- N72 -->
-                                <td>{{ result.n1_60|floatformat:1|default:"-" }}</td>  <!-- N1_72 -->
-                                {% if method_filter == 'JRA' %}
-                                <td>{{ result.c1_factor|floatformat:3|default:"-" }}</td>
-                                <td>{{ result.c2_factor|floatformat:3|default:"-" }}</td>
-                                {% endif %}
-                                <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>  <!-- Na -->
-                                {% else %}
-                                <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>
-                                {% endif %}
-                                
-                                <td>{{ result.vs|floatformat:0|default:"-" }}</td>
+                            {% regroup results by soil_layer.borehole.borehole_id as borehole_groups %}
+                            {% for borehole_group in borehole_groups %}
+                                {% for result in borehole_group.list %}
+                                <tr>
+                                    <td><strong>{{ result.soil_layer.borehole.borehole_id }}</strong></td>
+                                    {% if not method_filter %}
+                                    <td><span class="badge bg-secondary">{{ result.analysis_method }}</span></td>
+                                    {% endif %}
+                                    <td>{{ result.soil_layer.top_depth|floatformat:1 }}-{{ result.soil_layer.bottom_depth|floatformat:1 }}</td>
+                                    <td>{{ result.soil_layer.uscs|default:"-" }}</td>
+                                    
+                                    <!-- 修改後的N值顯示邏輯 -->
+                                    <td>{{ result.soil_layer.spt_n|floatformat:0|default:"-" }}</td>
+                                    
+                                    {% if method_filter == 'AIJ' or method_filter == 'JRA' %}
+                                    <td>{{ result.n60|floatformat:1|default:"-" }}</td>  <!-- N72 -->
+                                    <td>{{ result.n1_60|floatformat:1|default:"-" }}</td>  <!-- N1_72 -->
+                                    {% if method_filter == 'JRA' %}
+                                    <td>{{ result.c1_factor|floatformat:3|default:"-" }}</td>
+                                    <td>{{ result.c2_factor|floatformat:3|default:"-" }}</td>
+                                    {% endif %}
+                                    <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>  <!-- Na -->
+                                    {% else %}
+                                    <td>{{ result.n1_60cs|floatformat:1|default:"-" }}</td>
+                                    {% endif %}
+                                    
+                                    <td>{{ result.vs|floatformat:0|default:"-" }}</td>
 
+                                    
+                                    {% if request.GET.scenario == 'all' %}
+                                    <!-- 設計地震 -->
+                                    <td>{{ result.csr_design|floatformat:3 }}</td>
+                                    <td>{{ result.crr_design|floatformat:3 }}</td>
+                                    <td class="{% if result.fs_design < 1.0 %}safety-factor-danger{% elif result.fs_design < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
+                                        {{ result.fs_design|floatformat:2 }}
+                                    </td>
+                                    <!-- 中小地震 -->
+                                    <td>{{ result.csr_mid|floatformat:3 }}</td>
+                                    <td>{{ result.crr_mid|floatformat:3 }}</td>
+                                    <td class="{% if result.fs_mid < 1.0 %}safety-factor-danger{% elif result.fs_mid < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
+                                        {{ result.fs_mid|floatformat:2 }}
+                                    </td>
+                                    <!-- 最大地震 -->
+                                    <td>{{ result.csr_max|floatformat:3 }}</td>
+                                    <td>{{ result.crr_max|floatformat:3 }}</td>
+                                    <td class="{% if result.fs_max < 1.0 %}safety-factor-danger{% elif result.fs_max < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
+                                        {{ result.fs_max|floatformat:2 }}
+                                    </td>
+                                    {% elif request.GET.scenario == 'mid' %}
+                                    <td>{{ result.mw_mid|floatformat:1 }}</td>
+                                    <td>{{ result.a_value_mid|floatformat:3 }}</td>
+                                    <td>{{ result.csr_mid|floatformat:3 }}</td>
+                                    <td>{{ result.crr_mid|floatformat:3 }}</td>
+                                    <td class="{% if result.fs_mid < 1.0 %}safety-factor-danger{% elif result.fs_mid < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
+                                        {{ result.fs_mid|floatformat:2 }}
+                                    </td>
+                                    <td>{{ result.lpi_mid|floatformat:2 }}</td>
+                                    {% elif request.GET.scenario == 'max' %}
+                                    <td>{{ result.mw_max|floatformat:1 }}</td>
+                                    <td>{{ result.a_value_max|floatformat:3 }}</td>
+                                    <td>{{ result.csr_max|floatformat:3 }}</td>
+                                    <td>{{ result.crr_max|floatformat:3 }}</td>
+                                    <td class="{% if result.fs_max < 1.0 %}safety-factor-danger{% elif result.fs_max < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
+                                        {{ result.fs_max|floatformat:2 }}
+                                    </td>
+                                    <td>{{ result.lpi_max|floatformat:2 }}</td>
+                                    {% else %}
+                                    <!-- 預設顯示設計地震 -->
+                                    <td>{{ result.mw_design|floatformat:1 }}</td>
+                                    <td>{{ result.a_value_design|floatformat:3 }}</td>
+                                    <td>{{ result.csr_design|floatformat:3 }}</td>
+                                    <td>{{ result.crr_design|floatformat:3 }}</td>
+                                    <td class="{% if result.fs_design < 1.0 %}safety-factor-danger{% elif result.fs_design < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
+                                        {{ result.fs_design|floatformat:2 }}
+                                    </td>
+                                    <td>{{ result.lpi_design|floatformat:2 }}</td>
+                                    {% endif %}
+                                </tr>
+                                {% endfor %}
                                 
-                                {% if request.GET.scenario == 'all' %}
-                                <!-- 設計地震 -->
-                                <td>{{ result.csr_design|floatformat:3 }}</td>
-                                <td>{{ result.crr_design|floatformat:3 }}</td>
-                                <td class="{% if result.fs_design < 1.0 %}safety-factor-danger{% elif result.fs_design < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
-                                    {{ result.fs_design|floatformat:2 }}
-                                </td>
-                                <!-- 中小地震 -->
-                                <td>{{ result.csr_mid|floatformat:3 }}</td>
-                                <td>{{ result.crr_mid|floatformat:3 }}</td>
-                                <td class="{% if result.fs_mid < 1.0 %}safety-factor-danger{% elif result.fs_mid < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
-                                    {{ result.fs_mid|floatformat:2 }}
-                                </td>
-                                <!-- 最大地震 -->
-                                <td>{{ result.csr_max|floatformat:3 }}</td>
-                                <td>{{ result.crr_max|floatformat:3 }}</td>
-                                <td class="{% if result.fs_max < 1.0 %}safety-factor-danger{% elif result.fs_max < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
-                                    {{ result.fs_max|floatformat:2 }}
-                                </td>
-                                {% elif request.GET.scenario == 'mid' %}
-                                <td>{{ result.mw_mid|floatformat:1 }}</td>
-                                <td>{{ result.a_value_mid|floatformat:3 }}</td>
-                                <td>{{ result.csr_mid|floatformat:3 }}</td>
-                                <td>{{ result.crr_mid|floatformat:3 }}</td>
-                                <td class="{% if result.fs_mid < 1.0 %}safety-factor-danger{% elif result.fs_mid < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
-                                    {{ result.fs_mid|floatformat:2 }}
-                                </td>
-                                <td>{{ result.lpi_mid|floatformat:2 }}</td>
-                                {% elif request.GET.scenario == 'max' %}
-                                <td>{{ result.mw_max|floatformat:1 }}</td>
-                                <td>{{ result.a_value_max|floatformat:3 }}</td>
-                                <td>{{ result.csr_max|floatformat:3 }}</td>
-                                <td>{{ result.crr_max|floatformat:3 }}</td>
-                                <td class="{% if result.fs_max < 1.0 %}safety-factor-danger{% elif result.fs_max < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
-                                    {{ result.fs_max|floatformat:2 }}
-                                </td>
-                                <td>{{ result.lpi_max|floatformat:2 }}</td>
-                                {% else %}
-                                <!-- 預設顯示設計地震 -->
-                                <td>{{ result.mw_design|floatformat:1 }}</td>
-                                <td>{{ result.a_value_design|floatformat:3 }}</td>
-                                <td>{{ result.csr_design|floatformat:3 }}</td>
-                                <td>{{ result.crr_design|floatformat:3 }}</td>
-                                <td class="{% if result.fs_design < 1.0 %}safety-factor-danger{% elif result.fs_design < 1.3 %}safety-factor-warning{% else %}safety-factor-good{% endif %}">
-                                    {{ result.fs_design|floatformat:2 }}
-                                </td>
-                                <td>{{ result.lpi_design|floatformat:2 }}</td>
-                                {% endif %}
-                            </tr>
-                            {% empty %}
+                                <!-- LPI統計行 - 每個鑽孔一行 -->
+                                <tr class="lpi-summary-row">
+                                    <td><strong>{{ borehole_group.grouper }} LPI總計</strong></td>
+                                    {% if not method_filter %}
+                                    <td>-</td>
+                                    {% endif %}
+                                    <td colspan="4" class="text-center text-muted">液化潛能指數統計</td>
+                                    {% if method_filter == 'JRA' %}
+                                    <td colspan="5">-</td>
+                                    {% elif method_filter == 'AIJ' %}
+                                    <td colspan="3">-</td>
+                                    {% else %}
+                                    <td>-</td>
+                                    {% endif %}
+                                    <td>-</td> <!-- Vs欄位 -->
+                                    
+                                    {% if request.GET.scenario == 'all' %}
+                                    <!-- 全部情境：顯示三種地震的LPI總計 -->
+                                    <td colspan="2" class="text-center">設計:</td>
+                                    <td>
+                                        <span id="design-lpi-{{ borehole_group.grouper }}" data-lpi-values="{% for r in borehole_group.list %}{{ r.lpi_design|default:0 }},{% endfor %}">
+                                            <!-- 透過JavaScript計算 -->
+                                        </span>
+                                    </td>
+                                    <td colspan="2" class="text-center">中小:</td>
+                                    <td>
+                                        <span id="mid-lpi-{{ borehole_group.grouper }}" data-lpi-values="{% for r in borehole_group.list %}{{ r.lpi_mid|default:0 }},{% endfor %}">
+                                            <!-- 透過JavaScript計算 -->
+                                        </span>
+                                    </td>
+                                    <td colspan="2" class="text-center">最大:</td>
+                                    <td>
+                                        <span id="max-lpi-{{ borehole_group.grouper }}" data-lpi-values="{% for r in borehole_group.list %}{{ r.lpi_max|default:0 }},{% endfor %}">
+                                            <!-- 透過JavaScript計算 -->
+                                        </span>
+                                    </td>
+                                    {% elif request.GET.scenario == 'mid' %}
+                                    <!-- 中小地震情境 -->
+                                    <td colspan="5" class="text-center text-muted">中小地震LPI總計:</td>
+                                    <td>
+                                        <span id="mid-lpi-{{ borehole_group.grouper }}" data-lpi-values="{% for r in borehole_group.list %}{{ r.lpi_mid|default:0 }},{% endfor %}">
+                                            <!-- 透過JavaScript計算 -->
+                                        </span>
+                                    </td>
+                                    {% elif request.GET.scenario == 'max' %}
+                                    <!-- 最大地震情境 -->
+                                    <td colspan="5" class="text-center text-muted">最大地震LPI總計:</td>
+                                    <td>
+                                        <span id="max-lpi-{{ borehole_group.grouper }}" data-lpi-values="{% for r in borehole_group.list %}{{ r.lpi_max|default:0 }},{% endfor %}">
+                                            <!-- 透過JavaScript計算 -->
+                                        </span>
+                                    </td>
+                                    {% else %}
+                                    <!-- 預設設計地震情境 -->
+                                    <td colspan="5" class="text-center text-muted">設計地震LPI總計:</td>
+                                    <td>
+                                        <span id="design-lpi-{{ borehole_group.grouper }}" data-lpi-values="{% for r in borehole_group.list %}{{ r.lpi_design|default:0 }},{% endfor %}">
+                                            <!-- 透過JavaScript計算 -->
+                                        </span>
+                                    </td>
+                                    {% endif %}
+                                </tr>
+                            {% endfor %}
+                            
+                            {% if not results %}
                             <tr>
                                 <td colspan="20" class="text-center text-muted py-4">
                                     <i class="fas fa-search fa-2x mb-2"></i><br>
@@ -454,7 +528,7 @@ function getColumnHeaders(method) {
                                     {% endif %}
                                 </td>
                             </tr>
-                            {% endfor %}
+                            {% endif %}
                         </tbody>
                     </table>
                 </div>
@@ -462,8 +536,6 @@ function getColumnHeaders(method) {
         </div>
     </div>
 </div>
-
-
 
 <!-- 新增：輸出檔案資訊 Modal -->
 <!-- 替換原有的輸出檔案資訊 Modal -->
@@ -531,6 +603,7 @@ function getColumnHeaders(method) {
         </div>
     </div>
 </div>
+
 <!-- 新增：方法比較 Modal -->
 <div class="modal fade" id="methodComparisonModal" tabindex="-1">
     <div class="modal-dialog modal-xl">
@@ -550,6 +623,7 @@ function getColumnHeaders(method) {
         </div>
     </div>
 </div>
+
 {% endblock %}
 
 {% block extra_js %}
@@ -557,7 +631,46 @@ function getColumnHeaders(method) {
 // 檢查並初始化輸出檔案狀態
 document.addEventListener('DOMContentLoaded', function() {
     checkOutputsStatus();
+    calculateLPITotals(); // 計算LPI總計
 });
+
+// LPI計算和顯示函數
+function calculateLPITotals() {
+    // 查找所有LPI總計元素
+    document.querySelectorAll('[id*="-lpi-"]').forEach(function(element) {
+        const lpiValues = element.getAttribute('data-lpi-values');
+        if (lpiValues) {
+            // 解析LPI值並計算總和
+            const values = lpiValues.split(',').map(function(val) {
+                const num = parseFloat(val);
+                return isNaN(num) ? 0 : num;
+            }).filter(function(val) {
+                return val > 0; // 只計算大於0的值
+            });
+            
+            const total = values.reduce(function(sum, val) {
+                return sum + val;
+            }, 0);
+            
+            // 根據總和確定樣式類別
+            let className, riskText;
+            if (total < 5) {
+                className = 'lpi-low';
+                riskText = '(低風險)';
+            } else if (total <= 15) {
+                className = 'lpi-medium';
+                riskText = '(中風險)';
+            } else {
+                className = 'lpi-high';
+                riskText = '(高風險)';
+            }
+            
+            // 設定內容和樣式
+            element.className = className;
+            element.textContent = total.toFixed(2) + ' ' + riskText;
+        }
+    });
+}
 
 function checkOutputsStatus() {
     const statusElement = document.getElementById('outputs-status');
@@ -586,20 +699,8 @@ function checkAndDownloadOutputs() {
         .then(response => response.json())
         .then(data => {
             if (data.has_outputs) {
-                // 有檔案，確認是否要下載全部
-                if (data.directories && data.directories.length > 1) {
-                    const confirmed = confirm(
-                        `找到 ${data.directories.length} 個資料夾，總共 ${data.total_files} 個檔案 (${formatFileSize(data.total_size)})。\n\n` +
-                        `確定要下載全部嗎？\n\n` +
-                        `提示：您也可以點擊"選擇性下載"來選擇特定資料夾。`
-                    );
-                    if (confirmed) {
-                        window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
-                    }
-                } else {
-                    // 只有一個資料夾，直接下載
-                    window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
-                }
+                // 有檔案，直接下載
+                window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
             } else {
                 // 沒有檔案，顯示提示
                 alert('沒有找到分析輸出檔案。\n\n可能原因：\n1. 分析尚未完成\n2. 分析過程中沒有生成額外的輸出檔案\n3. 輸出檔案已被清理');
@@ -631,32 +732,23 @@ function showOutputsInfo() {
                 let html = `
                     <div class="alert alert-info">
                         <i class="fas fa-info-circle"></i>
-                        找到 <strong>${data.total_files}</strong> 個檔案，總大小：<strong>${formatFileSize(data.total_size)}</strong>
-                        <div class="mt-2">
-                            <small class="text-muted">您可以下載全部檔案，或選擇特定資料夾進行下載。</small>
-                        </div>
+                        找到 ${data.total_files} 個檔案，總大小：${formatFileSize(data.total_size)}
                     </div>
                 `;
                 
                 data.directories.forEach(dir => {
                     html += `
                         <div class="card mb-3">
-                            <div class="card-header d-flex justify-content-between align-items-center">
-                                <div>
-                                    <h6 class="card-title mb-0">
-                                        <i class="fas fa-folder"></i> ${dir.name}
-                                        <span class="badge bg-secondary ms-2">${dir.file_count} 個檔案</span>
-                                        <span class="badge bg-info ms-1">${formatFileSize(dir.size)}</span>
-                                    </h6>
-                                </div>
-                                <button type="button" class="btn btn-sm btn-success" onclick="downloadSingleDirectory('${encodeURIComponent(dir.relative_path || dir.name)}')" title="下載此資料夾">
-                                    <i class="fas fa-download"></i> 下載資料夾
-                                </button>
+                            <div class="card-header">
+                                <h6 class="card-title mb-0">
+                                    <i class="fas fa-folder"></i> ${dir.name}
+                                    <span class="badge bg-secondary ms-2">${dir.file_count} 個檔案</span>
+                                </h6>
                             </div>
                             <div class="card-body">
-                                <div class="table-responsive" style="max-height: 200px; overflow-y: auto;">
+                                <div class="table-responsive">
                                     <table class="table table-sm">
-                                        <thead class="table-light">
+                                        <thead>
                                             <tr>
                                                 <th>檔案名稱</th>
                                                 <th>路徑</th>
@@ -672,8 +764,8 @@ function showOutputsInfo() {
                             <tr>
                                 <td><i class="fas fa-file"></i> ${file.name}</td>
                                 <td><small class="text-muted">${file.path}</small></td>
-                                <td><small>${formatFileSize(file.size)}</small></td>
-                                <td><small>${file.modified}</small></td>
+                                <td>${formatFileSize(file.size)}</td>
+                                <td>${file.modified}</td>
                             </tr>
                         `;
                     });
@@ -692,7 +784,7 @@ function showOutputsInfo() {
                 content.innerHTML = `
                     <div class="alert alert-warning">
                         <i class="fas fa-exclamation-triangle"></i>
-                        <strong>沒有找到分析輸出檔案</strong>
+                        沒有找到分析輸出檔案
                     </div>
                     <p class="text-muted">可能原因：</p>
                     <ul class="text-muted">
@@ -700,11 +792,6 @@ function showOutputsInfo() {
                         <li>分析過程中沒有生成額外的輸出檔案</li>
                         <li>輸出檔案已被清理</li>
                     </ul>
-                    <div class="text-center mt-3">
-                        <button type="button" class="btn btn-primary" onclick="window.location.href='{% url "liquefaction:project_detail" project.pk %}'">
-                            <i class="fas fa-arrow-left"></i> 返回專案
-                        </button>
-                    </div>
                 `;
             }
         })
@@ -713,96 +800,14 @@ function showOutputsInfo() {
             content.innerHTML = `
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-circle"></i>
-                    <strong>載入檔案資訊時發生錯誤</strong>
-                    <br><small>${error.message}</small>
-                </div>
-                <div class="text-center mt-3">
-                    <button type="button" class="btn btn-secondary" onclick="showOutputsInfo()">
-                        <i class="fas fa-redo"></i> 重新載入
-                    </button>
+                    載入檔案資訊時發生錯誤：${error.message}
                 </div>
             `;
         });
 }
 
-function downloadSingleDirectory(dirName) {
-    const decodedDirName = decodeURIComponent(dirName);
-    
-    if (confirm(`確定要下載資料夾 "${decodedDirName}" 嗎？`)) {
-        // 顯示載入狀態
-        const loadingHtml = `
-            <div class="alert alert-info">
-                <div class="d-flex align-items-center">
-                    <div class="loading me-3"></div>
-                    <div>
-                        <strong>準備下載中...</strong><br>
-                        <small>正在打包資料夾 "${decodedDirName}"，請稍候</small>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // 更新modal內容顯示載入狀態
-        const content = document.getElementById('outputs-info-content');
-        const originalContent = content.innerHTML;
-        content.innerHTML = loadingHtml;
-        
-        // 執行下載
-        const downloadUrl = `{% url "liquefaction:download_single_dir" project.pk "PLACEHOLDER" %}`.replace('PLACEHOLDER', encodeURIComponent(dirName));
-        
-        // 創建隱藏的iframe來觸發下載
-        const iframe = document.createElement('iframe');
-        iframe.style.display = 'none';
-        iframe.src = downloadUrl;
-        document.body.appendChild(iframe);
-        
-        // 3秒後移除iframe並恢復原內容
-        setTimeout(() => {
-            document.body.removeChild(iframe);
-            content.innerHTML = originalContent;
-            
-            // 顯示成功訊息
-            const successAlert = document.createElement('div');
-            successAlert.className = 'alert alert-success alert-dismissible fade show';
-            successAlert.innerHTML = `
-                <i class="fas fa-check-circle"></i>
-                <strong>下載開始！</strong> 資料夾 "${decodedDirName}" 的下載應該已經開始。
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            content.insertBefore(successAlert, content.firstChild);
-        }, 3000);
-    }
-}
-
 function downloadOutputsFromModal() {
-    const modal = bootstrap.Modal.getInstance(document.getElementById('outputsInfoModal'));
-    
-    if (confirm('確定要下載所有分析輸出檔案嗎？')) {
-        // 關閉modal
-        if (modal) {
-            modal.hide();
-        }
-        
-        // 執行下載
-        window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
-        
-        // 顯示成功訊息
-        setTimeout(() => {
-            const alertDiv = document.createElement('div');
-            alertDiv.className = 'alert alert-success alert-dismissible fade show';
-            alertDiv.innerHTML = `
-                <i class="fas fa-download"></i>
-                <strong>下載開始！</strong> 所有分析輸出檔案的下載應該已經開始。
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            `;
-            
-            // 插入到頁面頂部
-            const container = document.querySelector('.container');
-            if (container && container.firstChild) {
-                container.insertBefore(alertDiv, container.firstChild);
-            }
-        }, 500);
-    }
+    window.location.href = '{% url "liquefaction:download_outputs" project.pk %}';
 }
 
 function formatFileSize(bytes) {
